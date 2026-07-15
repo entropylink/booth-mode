@@ -1,230 +1,224 @@
-// CSV import for the pre-fair stock plan (plan.md §6 F1, P0 gate).
+// Maps the canonical stock template (core-data/template.ts) to and from Booth
+// Mode's model: Tier, Product and StockPlanLine.
 //
-// Column names are matched loosely in EN and ES because the source is a real
-// spreadsheet, not an export we control. Expected shape — one row per variant:
-//
-//   producto,tier,variante,precio,objetivo
-//   Coasters,2,Roble,120,24
-//   Coasters,2,Nogal,120,18
-//   Llavero,1,,45,60
-//
-// A product with no variants uses a single blank variant, normalized to "—".
+// The file format itself lives in template.ts and is shared byte-for-byte with
+// Forge Log. This file is only the adapter — everything here is about *this*
+// app's shape, which is why it is not shared.
 
-import { parseMXN } from "./money";
-import type { Cents, Product, StockPlanLine, Tier } from "../core-data/types";
+import { config } from "../config";
+import {
+  emptyTemplateCSV,
+  parseTemplateCSV,
+  serializeTemplateCSV,
+  stripDiacritics,
+  TEMPLATE_HEADER,
+  type TemplateOutRow,
+} from "../core-data/template";
+import {
+  EMPTY_COST,
+  type Cents,
+  type InventoryLine,
+  type Product,
+  type StockPlanLine,
+  type Tier,
+  type UnitCost,
+} from "../core-data/types";
 
 export const NO_VARIANT = "—";
 
-export interface ImportRow {
-  name: string;
-  tier: Tier;
-  variant: string;
-  priceCents: Cents;
-  target: number;
-}
-
 export interface ImportResult {
+  tiers: Tier[];
   products: Product[];
   lines: StockPlanLine[];
   errors: string[];
+  inferred: string[];
+  unknownColumns: string[];
 }
 
-/** RFC4180-ish: handles quoted fields, escaped quotes, CRLF, trailing newline. */
-export function parseCSV(text: string): string[][] {
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let field = "";
-  let inQuotes = false;
-
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
-
-    if (inQuotes) {
-      if (char === '"') {
-        if (text[i + 1] === '"') {
-          field += '"';
-          i++;
-        } else {
-          inQuotes = false;
-        }
-      } else {
-        field += char;
-      }
-      continue;
-    }
-
-    if (char === '"') {
-      inQuotes = true;
-    } else if (char === ",") {
-      row.push(field);
-      field = "";
-    } else if (char === "\n" || char === "\r") {
-      if (char === "\r" && text[i + 1] === "\n") i++;
-      row.push(field);
-      rows.push(row);
-      row = [];
-      field = "";
-    } else {
-      field += char;
-    }
-  }
-
-  if (field !== "" || row.length > 0) {
-    row.push(field);
-    rows.push(row);
-  }
-
-  return rows.filter((r) => r.some((cell) => cell.trim() !== ""));
-}
-
-const HEADER_ALIASES: Record<keyof ImportRow, string[]> = {
-  name: ["name", "product", "producto", "nombre", "articulo", "artículo"],
-  tier: ["tier", "nivel", "categoria", "categoría"],
-  variant: ["variant", "variante", "version", "versión", "modelo", "color"],
-  priceCents: ["price", "precio", "pricemxn", "preciomxn", "unitprice", "preciounitario"],
-  target: ["target", "objetivo", "meta", "qty", "cantidad", "planned", "planeado"],
-};
-
-function stripDiacritics(s: string): string {
-  return s.normalize("NFD").replace(/\p{Diacritic}/gu, "");
-}
-
-function normalizeHeader(h: string): string {
-  return stripDiacritics(h.trim().toLowerCase()).replace(/[^a-z0-9]/g, "");
-}
-
-function mapHeaders(header: string[]): Partial<Record<keyof ImportRow, number>> {
-  const map: Partial<Record<keyof ImportRow, number>> = {};
-  header.forEach((raw, index) => {
-    const norm = normalizeHeader(raw);
-    for (const [field, aliases] of Object.entries(HEADER_ALIASES)) {
-      if (aliases.some((a) => normalizeHeader(a) === norm)) {
-        const key = field as keyof ImportRow;
-        if (map[key] === undefined) map[key] = index;
-      }
-    }
-  });
-  return map;
-}
-
-function slugId(name: string): string {
+export function slugId(name: string): string {
   return (
     stripDiacritics(name.trim().toLowerCase())
       .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "") || "producto"
+      .replace(/^-|-$/g, "") || "item"
   );
 }
 
 /**
- * Parse a stock-plan CSV into products + plan lines.
- *
- * Bad rows are collected in `errors` rather than thrown — a vendor importing 60
- * rows the night before a fair needs the other 59, not a stack trace.
+ * "Flagship – go deep" -> "flagship". Splits only on a dash *surrounded by
+ * spaces*, so "Off-theme – minimal" keeps its hyphen and becomes "off-theme".
  */
+export function tierIdFromLabel(label: string): string {
+  const head = label.split(/\s+[–—-]\s+/)[0] ?? label;
+  return slugId(head);
+}
+
+/** The fair price implied by a house price, when none was given explicitly. */
+export function fairPriceFromHouse(housePriceCents: Cents): Cents {
+  const raw = housePriceCents * config.pricing.fairMarkup;
+  return config.pricing.roundToWholePeso
+    ? Math.round(raw / config.currency.minorPerMajor) * config.currency.minorPerMajor
+    : Math.round(raw);
+}
+
 export function importStockPlanCSV(text: string): ImportResult {
-  const rows = parseCSV(text);
-  const errors: string[] = [];
-  if (rows.length === 0) return { products: [], lines: [], errors: ["CSV vacío"] };
+  const parsed = parseTemplateCSV(text);
+  const errors = [...parsed.errors];
 
-  const cols = mapHeaders(rows[0]);
-  const missing = (["name", "tier", "priceCents", "target"] as const).filter(
-    (k) => cols[k] === undefined,
-  );
-  if (missing.length > 0) {
-    return {
-      products: [],
-      lines: [],
-      errors: [`Faltan columnas: ${missing.join(", ")}`],
-    };
-  }
-
-  const productsByName = new Map<string, Product>();
+  const tiersById = new Map<string, Tier>();
+  const productsById = new Map<string, Product>();
   const lines: StockPlanLine[] = [];
+  const seenSku = new Map<string, string>();
 
-  rows.slice(1).forEach((cells, i) => {
-    const rowNum = i + 2;
-    const cell = (key: keyof ImportRow): string => {
-      const index = cols[key];
-      return index === undefined ? "" : (cells[index] ?? "").trim();
+  for (const row of parsed.rows) {
+    // --- tier
+    let tierId = "sin-tier";
+    if (row.tier !== "") {
+      tierId = tierIdFromLabel(row.tier);
+      const existing = tiersById.get(tierId);
+      // Two different labels collapsing to one id — keep them apart.
+      if (existing && existing.label !== row.tier) tierId = slugId(row.tier);
+      if (!tiersById.has(tierId)) {
+        tiersById.set(tierId, {
+          id: tierId,
+          label: row.tier,
+          sortOrder: tiersById.size,
+          color:
+            config.tierPalette[tiersById.size % config.tierPalette.length] ??
+            config.tierFallbackColor,
+        });
+      }
+    }
+
+    // --- price
+    let sellingPriceCents = row.sellingPriceCents;
+    if (sellingPriceCents === null && row.housePriceCents !== null) {
+      sellingPriceCents = fairPriceFromHouse(row.housePriceCents);
+    }
+    if (sellingPriceCents === null) {
+      errors.push(`Fila ${row.rowNum}: ${row.product} sin precio`);
+      continue;
+    }
+
+    const cost: UnitCost = {
+      materialCents: row.costMaterialCents,
+      machineCents: row.costMachineCents,
+      laborCents: row.costLaborCents,
+      consumableCents: row.costConsumableCents,
+      packagingCents: row.costPackagingCents,
     };
 
-    const name = cell("name");
-    if (name === "") {
-      errors.push(`Fila ${rowNum}: sin nombre`);
-      return;
+    // --- identity
+    const id = row.sku !== "" ? `sku-${slugId(row.sku)}` : slugId(row.product);
+    if (row.sku !== "") {
+      const claimedBy = seenSku.get(row.sku);
+      if (claimedBy !== undefined && claimedBy !== row.product) {
+        errors.push(
+          `Fila ${row.rowNum}: SKU ${row.sku} usado por "${claimedBy}" y "${row.product}"`,
+        );
+        continue;
+      }
+      seenSku.set(row.sku, row.product);
     }
 
-    const tierNum = Number(cell("tier"));
-    if (!Number.isInteger(tierNum) || tierNum < 1 || tierNum > 5) {
-      errors.push(`Fila ${rowNum}: tier inválido "${cell("tier")}"`);
-      return;
-    }
+    const variant = row.variant || NO_VARIANT;
 
-    const priceCents = parseMXN(cell("priceCents"));
-    if (priceCents === null || priceCents < 0) {
-      errors.push(`Fila ${rowNum}: precio inválido "${cell("priceCents")}"`);
-      return;
-    }
-
-    const target = Number(cell("target"));
-    if (!Number.isInteger(target) || target < 0) {
-      errors.push(`Fila ${rowNum}: objetivo inválido "${cell("target")}"`);
-      return;
-    }
-
-    const variant = cell("variant") || NO_VARIANT;
-    const id = slugId(name);
-
-    let product = productsByName.get(id);
+    let product = productsById.get(id);
     if (!product) {
       product = {
         id,
-        name,
-        tier: tierNum as Tier,
+        sku: row.sku,
+        name: row.product,
         variants: [],
-        priceCents,
+        tierId,
+        machine: row.machine || undefined,
+        cost,
+        housePriceCents: row.housePriceCents ?? sellingPriceCents,
+        sellingPriceCents,
         stockByVariant: {},
+        productionMinutes: row.productionMinutes ?? undefined,
+        restockThreshold: row.restockThreshold ?? undefined,
+        active: row.active,
+        notes: row.notes || undefined,
       };
-      productsByName.set(id, product);
+      productsById.set(id, product);
     }
+
+    if (lines.some((l) => l.productId === id && l.variant === variant)) {
+      errors.push(`Fila ${row.rowNum}: ${row.product} / ${variant} duplicado`);
+      continue;
+    }
+
     if (!product.variants.includes(variant)) product.variants.push(variant);
-    product.stockByVariant[variant] = target;
+    product.stockByVariant[variant] = row.currentQty;
 
-    const duplicate = lines.some((l) => l.productId === id && l.variant === variant);
-    if (duplicate) {
-      errors.push(`Fila ${rowNum}: ${name} / ${variant} duplicado`);
-      return;
-    }
+    lines.push({
+      productId: id,
+      variant,
+      target: row.goalQty,
+      made: row.made,
+      packed: row.packedQty,
+    });
+  }
 
-    lines.push({ productId: id, variant, target, packed: 0 });
-  });
-
-  return { products: [...productsByName.values()], lines, errors };
+  return {
+    tiers: [...tiersById.values()],
+    products: [...productsById.values()],
+    lines,
+    errors,
+    inferred: parsed.inferred,
+    unknownColumns: parsed.unknownColumns,
+  };
 }
 
-/** Export the plan back out — round-trips with importStockPlanCSV. */
+/**
+ * Write the canonical template from the live inventory picture. Derived columns
+ * are filled from lib/inventory's figures, not re-derived here.
+ */
 export function exportStockPlanCSV(
+  inventory: readonly InventoryLine[],
   products: readonly Product[],
-  lines: readonly StockPlanLine[],
+  tiers: readonly Tier[],
 ): string {
   const productById = new Map(products.map((p) => [p.id, p]));
-  const escape = (v: string): string =>
-    /[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+  const tierById = new Map(tiers.map((t) => [t.id, t]));
 
-  const out = ["producto,tier,variante,precio,objetivo,empacado"];
-  for (const line of lines) {
+  const rows: TemplateOutRow[] = [];
+  for (const line of inventory) {
     const product = productById.get(line.productId);
     if (!product) continue;
-    out.push(
-      [
-        escape(product.name),
-        String(product.tier),
-        escape(line.variant === NO_VARIANT ? "" : line.variant),
-        (product.priceCents / 100).toFixed(2),
-        String(line.target),
-        String(line.packed),
-      ].join(","),
-    );
+
+    rows.push({
+      sku: product.sku,
+      product: product.name,
+      variant: line.variant === NO_VARIANT ? "" : line.variant,
+      tier: tierById.get(product.tierId)?.label ?? "",
+      machine: product.machine ?? "",
+      costMaterialCents: product.cost.materialCents,
+      costMachineCents: product.cost.machineCents,
+      costLaborCents: product.cost.laborCents,
+      costConsumableCents: product.cost.consumableCents,
+      costPackagingCents: product.cost.packagingCents,
+      housePriceCents: product.housePriceCents,
+      sellingPriceCents: product.sellingPriceCents,
+      currentQty: line.currentQty,
+      goalQty: line.target,
+      made: line.made,
+      packedQty: line.packed,
+      productionMinutes: product.productionMinutes ?? null,
+      restockThreshold: product.restockThreshold ?? null,
+      active: product.active,
+      notes: product.notes ?? "",
+      unitCostCents: line.unitCostCents,
+      marginUnitCents: line.marginCents,
+      marginPct: line.marginPct,
+      toMake: line.toMake,
+      goalValueCents: line.goalValueCents,
+      goalProfitCents: line.goalProfitCents,
+    });
   }
-  return out.join("\n") + "\n";
+
+  return serializeTemplateCSV(rows);
 }
+
+export { EMPTY_COST, TEMPLATE_HEADER, emptyTemplateCSV };
+export { parseCSV } from "../core-data/template";

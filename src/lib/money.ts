@@ -3,9 +3,20 @@
 // floats except through roundHalfUp, and nothing here touches React.
 
 import { config } from "../config";
-import type { Cents, DenominationCounts } from "../core-data/types";
+import type { Cents, DenominationCounts, UnitCost } from "../core-data/types";
 
 const { minorPerMajor, symbol } = config.currency;
+
+/** The one place the cost lines are added up. */
+export function totalUnitCost(cost: UnitCost): Cents {
+  return (
+    cost.materialCents +
+    cost.machineCents +
+    cost.laborCents +
+    cost.consumableCents +
+    cost.packagingCents
+  );
+}
 
 /** Retail rounding: half away from zero. Math.round is half-up for positives. */
 export function roundHalfUp(n: number): Cents {

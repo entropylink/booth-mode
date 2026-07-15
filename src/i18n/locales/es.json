@@ -63,7 +63,52 @@
     "removeConfirm": "¿Quitar {{name}} del plan?",
     "imported": "{{products}} productos y {{lines}} líneas importadas",
     "importErrors": "{{count}} filas con problemas",
-    "noPlanYet": "Sin plan para esta feria."
+    "noPlanYet": "Sin plan para esta feria.",
+    "mode": {
+      "stock": "Inventario",
+      "packing": "Empaque",
+      "money": "Dinero"
+    },
+    "hint": {
+      "stock": "Qué tienes y qué falta por hacer.",
+      "packing": "Marca lo que ya está en la caja.",
+      "money": "Precios, margen y valor objetivo."
+    },
+    "stepper": {
+      "stock": "existencia",
+      "packing": "empacado",
+      "money": "objetivo"
+    },
+    "sku": "SKU",
+    "housePrice": "Precio casa",
+    "sellingPrice": "Precio venta",
+    "currentQty": "Existencia",
+    "template": "Plantilla",
+    "newTier": "O escribe un tier nuevo",
+    "tierRequired": "Elige o escribe un tier",
+    "noCost": "sin costo",
+    "margin": "margen",
+    "goalValue": "objetivo",
+    "covered": "cubierto",
+    "madeHint": "Producción terminada",
+    "toMakeQueue": "Por hacer",
+    "toMakeN": "faltan {{n}}",
+    "haveOfTarget": "{{have}} de {{target}}",
+    "soldN": "vendidas {{n}}",
+    "andMore": "y {{n}} más…",
+    "kpiHave": "Tienes",
+    "kpiToMake": "Por hacer",
+    "kpiGoalValue": "Valor objetivo",
+    "kpiGoalProfit": "Utilidad objetivo",
+    "ofTarget": "de {{n}} objetivo",
+    "benchHours": "{{n}} h de taller",
+    "noTimes": "sin tiempos de producción",
+    "missingCost": "{{n}} sin costo",
+    "importReport": "Importación",
+    "importedProducts": "Productos importados",
+    "importedTiers": "Tiers encontrados",
+    "inferred": "Columnas deducidas",
+    "unknownColumns": "Columnas ignoradas"
   },
   "venta": {
     "title": "Venta",
@@ -166,7 +211,11 @@
       "transport": "Transporte",
       "material": "Material",
       "other": "Otro"
-    }
+    },
+    "grossProfit": "Utilidad bruta",
+    "cogs": "Costo vendido:",
+    "noCostYet": "falta capturar costos",
+    "tierNote": "Los tiers son hipótesis: úsalos para ajustar qué fabricar."
   },
   "common": {
     "add": "Agregar",

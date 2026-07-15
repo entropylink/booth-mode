@@ -42,11 +42,32 @@ case, and it's why two devices on one booth (v2) will merge without conflict.
 
 - `src/lib/money.ts` — all money is **integer centavos**, never floats. Change
   making, formatting, parsing, denomination breakdown.
-- `src/lib/derive.ts` — every total on screen. UI components never sum money.
-- `src/config.ts` — denominations, thresholds, tier colors. Config-only tuning.
-- `src/core-data/types.ts` — schema. The `Product` shape is **shared with Forge
-  Log** (`../forge-log`) and duplicated by hand until these apps share a real
-  package; keep the two in sync when either changes.
+- `src/lib/inventory.ts` — the stock picture: have, target, made, packed, sold,
+  to-make, margin. The app's centre of gravity.
+- `src/lib/derive.ts` — every money total on screen. UI never sums money.
+- `src/config.ts` — denominations, markup, thresholds, tier palette.
+- `src/core-data/types.ts` — schema. The `Tier`/`UnitCost`/`Product` block is
+  **shared with Forge Log** and duplicated by hand until these apps share a real
+  package.
+- `src/core-data/template.ts` — the shared CSV contract, byte-identical to
+  Forge Log's copy. See [docs/stock-template.md](docs/stock-template.md).
+
+### The suite loop
+
+Forge Log (workshop) owns costs, production times, machines, tiers and workshop
+stock. Booth Mode (fair) owns targets, packing, sales and cash. They exchange
+one CSV; `src/lib/interop.test.ts` imports a real file emitted by Forge Log and
+fails if the two ever drift apart.
+
+Tiers are **hypotheses about what will sell**, not fixed price bands — which is
+why they're editable named data rather than a 1–5 enum. Booth Mode's sales
+figures are what tells you a tier was wrong.
+
+### Unknown beats wrong
+
+Cost 0 means "not captured", not "free". Margin, profit and bench-time totals are
+withheld and shown as `—` rather than computed from partial data — a profit total
+that silently skips uncosted products is a lie in your own favour.
 
 ## Notable decisions
 
@@ -64,12 +85,14 @@ case, and it's why two devices on one booth (v2) will merge without conflict.
 
 ## Known gaps
 
-- The CSV importer's column format is a best guess at Francis's real
-  spreadsheet (tolerant of EN/ES headers, see `src/lib/csv.ts`). Point it at the
-  real file and adjust.
-- Restock ranking is `margin × velocity` per plan.md §6 F4, but real margin needs
-  Forge Log costing (v1.5). Until then unit price stands in for margin, so it
-  ranks by revenue velocity.
+- **No production times or costs in the real data yet.** The importer reads both,
+  and the app shows `—` for profit and bench hours until they're filled in.
+- Restock ranks by `margin × velocity` per plan.md §6 F4. Products without a cost
+  fall back to revenue velocity.
 - No Playwright drill yet; the F2 accept criteria's 50-sale/3-void drill is
-  covered as a unit test over the pure derivation
-  (`src/lib/derive.test.ts`), not yet through a browser.
+  covered as a unit test over the pure derivation (`src/lib/derive.test.ts`),
+  not yet through a browser.
+- Tier editing lives in Forge Log (not built). Booth Mode creates tiers on import
+  and when adding a product, but has no tier manager.
+- `src/lib/__fixtures__/feria-stock-plan.csv` is the vendor's real catalog with
+  real prices — it is a test fixture and this repo is private.

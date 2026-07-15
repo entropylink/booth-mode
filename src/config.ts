@@ -33,20 +33,29 @@ export const config = {
   /** Quick discount percentages offered in the cart (plan.md §6 F2). */
   quickDiscountPcts: [10, 20] as const,
 
+  pricing: {
+    /**
+     * Fair price as a multiple of the house price. The source spreadsheet used
+     * exactly 1.25 on all 60 rows. Only applied when selling_price is missing
+     * on import — an explicit price always wins.
+     */
+    fairMarkup: 1.25,
+    /** Round a computed fair price up to a whole peso. */
+    roundToWholePeso: true,
+  },
+
   /** Restock list: flag a variant at or below this many units (plan.md §6 F4). */
   restockThresholdDefault: 3,
 
   /** Low-battery "export now" warning threshold (plan.md §12). */
   lowBatteryWarningPct: 30,
 
-  /** Tier edge colors for product tiles (plan.md §6 F2). Distinct in sun and shade. */
-  tierColors: {
-    1: "#5eb0e5",
-    2: "#57c98a",
-    3: "#b89857",
-    4: "#e08641",
-    5: "#d9628f",
-  } as Record<number, string>,
+  /**
+   * Colors handed to tiers in sort order as they are discovered on import.
+   * Tiers are data, not an enum — see core-data/types.ts.
+   */
+  tierPalette: ["#d9a441", "#5eb0e5", "#57c98a", "#e08641", "#d9628f", "#9b8cd9"],
+  tierFallbackColor: "#8b93a3",
 };
 
 export type Config = typeof config;

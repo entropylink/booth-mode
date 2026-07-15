@@ -63,7 +63,52 @@
     "removeConfirm": "Remove {{name}} from the plan?",
     "imported": "Imported {{products}} products and {{lines}} lines",
     "importErrors": "{{count}} rows had problems",
-    "noPlanYet": "No plan for this fair yet."
+    "noPlanYet": "No plan for this fair yet.",
+    "mode": {
+      "stock": "Stock",
+      "packing": "Packing",
+      "money": "Money"
+    },
+    "hint": {
+      "stock": "What you have and what is still to make.",
+      "packing": "Check off what is already in the box.",
+      "money": "Prices, margin and goal value."
+    },
+    "stepper": {
+      "stock": "in stock",
+      "packing": "packed",
+      "money": "target"
+    },
+    "sku": "SKU",
+    "housePrice": "House price",
+    "sellingPrice": "Selling price",
+    "currentQty": "In stock",
+    "template": "Template",
+    "newTier": "Or type a new tier",
+    "tierRequired": "Pick or type a tier",
+    "noCost": "no cost",
+    "margin": "margin",
+    "goalValue": "goal",
+    "covered": "covered",
+    "madeHint": "Production finished",
+    "toMakeQueue": "To make",
+    "toMakeN": "{{n}} to make",
+    "haveOfTarget": "{{have}} of {{target}}",
+    "soldN": "sold {{n}}",
+    "andMore": "and {{n}} more…",
+    "kpiHave": "You have",
+    "kpiToMake": "To make",
+    "kpiGoalValue": "Goal value",
+    "kpiGoalProfit": "Goal profit",
+    "ofTarget": "of {{n}} target",
+    "benchHours": "{{n}} h at the bench",
+    "noTimes": "no production times",
+    "missingCost": "{{n}} without cost",
+    "importReport": "Import",
+    "importedProducts": "Products imported",
+    "importedTiers": "Tiers found",
+    "inferred": "Inferred columns",
+    "unknownColumns": "Ignored columns"
   },
   "venta": {
     "title": "Sell",
@@ -166,7 +211,11 @@
       "transport": "Transport",
       "material": "Material",
       "other": "Other"
-    }
+    },
+    "grossProfit": "Gross profit",
+    "cogs": "Cost of goods:",
+    "noCostYet": "costs not captured yet",
+    "tierNote": "Tiers are hypotheses: use these to adjust what you make."
   },
   "common": {
     "add": "Add",

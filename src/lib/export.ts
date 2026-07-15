@@ -34,6 +34,16 @@ export function daySummaryMarkdown(summary: DaySummary, fair: EventFair): string
   lines.push(`| **Neto** | **${formatMXN(summary.netCents)}** |`);
   lines.push("");
 
+  lines.push("## Utilidad");
+  lines.push("");
+  if (summary.grossProfitCents === null) {
+    lines.push("_Sin costos capturados — la utilidad no se puede calcular todavía._");
+  } else {
+    lines.push(`- Costo de lo vendido: ${formatMXN(summary.cogsCents ?? 0)}`);
+    lines.push(`- Utilidad bruta: ${formatMXN(summary.grossProfitCents)}`);
+  }
+  lines.push("");
+
   lines.push("## Caja");
   lines.push("");
   lines.push(`- Esperado: ${formatMXN(summary.cashExpectedCents)}`);
@@ -50,11 +60,11 @@ export function daySummaryMarkdown(summary: DaySummary, fair: EventFair): string
   if (summary.byProduct.length === 0) {
     lines.push("_Sin ventas._");
   } else {
-    lines.push("| Producto | Tier | Uds | Bruto |");
-    lines.push("|---|---:|---:|---:|");
+    lines.push("| Producto | Uds | Bruto |");
+    lines.push("|---|---:|---:|");
     for (const p of summary.byProduct) {
       lines.push(
-        `| ${p.productName} | ${p.tier} | ${p.qty} | ${formatMXN(p.grossCents)} |`,
+        `| ${p.productName} | ${p.qty} | ${formatMXN(p.grossCents)} |`,
       );
     }
   }
@@ -107,7 +117,7 @@ export function daySummaryCSV(summary: DaySummary, fair: EventFair): string {
     rows.push([
       "producto",
       escape(p.productName),
-      `tier${p.tier}`,
+      p.tierId,
       String(p.qty),
       pesos(p.grossCents),
     ]);

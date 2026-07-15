@@ -10,18 +10,21 @@ import {
   type ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { config } from "../config";
 import { formatMXN, parseMXN } from "../lib/money";
 import type { Cents, Tier } from "../core-data/types";
 
-export function tierColor(tier: Tier | number): string {
-  return config.tierColors[tier] ?? config.tierColors[1];
+/**
+ * Short form of a tier label for a cramped badge: "Flagship – go deep" reads as
+ * "Flagship". The full label stays in the title attribute.
+ */
+export function tierShort(tier: Tier): string {
+  return (tier.label.split(/\s+[–—-]\s+/)[0] ?? tier.label).trim();
 }
 
 export function TierBadge({ tier }: { tier: Tier }): ReactNode {
   return (
-    <span className="tier-badge" style={{ color: tierColor(tier) }}>
-      T{tier}
+    <span className="tier-badge" style={{ color: tier.color }} title={tier.label}>
+      {tierShort(tier)}
     </span>
   );
 }

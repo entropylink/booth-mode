@@ -12,7 +12,7 @@ import { config } from "../../config";
 import { NO_VARIANT } from "../../lib/csv";
 import { remainingByVariant, saleTotal, variantKey, voidedIds } from "../../lib/derive";
 import { recordSale, voidSale } from "../../lib/events";
-import { useEvents, useProducts, useStockPlan } from "../../lib/hooks";
+import { tierOf, useEvents, useProducts, useStockPlan, useTierMap } from "../../lib/hooks";
 import {
   changeBreakdown,
   changeDue,
@@ -30,7 +30,6 @@ import {
   Stepper,
   TierBadge,
   Toast,
-  tierColor,
   useLocalStorage,
   useT,
   useToast,
@@ -54,6 +53,7 @@ export function VentaTab({ fair }: { fair: EventFair }): ReactNode {
   const products = useProducts();
   const plan = useStockPlan(fair.id);
   const events = useEvents(fair.id);
+  const tiers = useTierMap();
 
   // Survives a reload mid-sale; committed to the log only on confirm.
   const [cart, setCart] = useLocalStorage<CartLine[]>(`booth-mode.cart.${fair.id}`, []);
@@ -98,7 +98,7 @@ export function VentaTab({ fair }: { fair: EventFair }): ReactNode {
               productId: product.id,
               variant,
               qty: 1,
-              unitPriceCents: product.priceCents,
+              unitPriceCents: product.sellingPriceCents,
             },
           ],
     );
@@ -166,15 +166,15 @@ export function VentaTab({ fair }: { fair: EventFair }): ReactNode {
             <button
               key={product.id}
               className="tile"
-              style={{ ["--tier" as string]: tierColor(product.tier) }}
+              style={{ ["--tier" as string]: tierOf(tiers, product.tierId).color }}
               disabled={left <= 0}
               onClick={() => onTileTap(product)}
             >
               <span className="row between">
                 <span className="tile-name">{product.name}</span>
-                <TierBadge tier={product.tier} />
+                <TierBadge tier={tierOf(tiers, product.tierId)} />
               </span>
-              <span className="tile-price">{formatMXNCompact(product.priceCents)}</span>
+              <span className="tile-price">{formatMXNCompact(product.sellingPriceCents)}</span>
               <span
                 className={`tile-left ${left <= 0 ? "out" : left <= lowThreshold ? "low" : ""}`}
               >
@@ -196,7 +196,7 @@ export function VentaTab({ fair }: { fair: EventFair }): ReactNode {
               <div className="cart-line" key={line.key}>
                 <span
                   className="tier-dot"
-                  style={{ background: tierColor(product?.tier ?? 1) }}
+                  style={{ background: tierOf(tiers, product?.tierId ?? "").color }}
                 />
                 <span className="grow">
                   <span className="cl-name">{product?.name ?? line.productId}</span>

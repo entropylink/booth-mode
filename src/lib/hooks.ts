@@ -5,7 +5,17 @@ import { useCallback, useEffect, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "./dexie";
 import { deriveDay } from "./derive";
-import type { BoothEvent, DaySummary, EventFair, Product, StockPlan } from "../core-data/types";
+import { buildInventory } from "./inventory";
+import { config } from "../config";
+import type {
+  BoothEvent,
+  DaySummary,
+  EventFair,
+  InventorySummary,
+  Product,
+  StockPlan,
+  Tier,
+} from "../core-data/types";
 
 const ACTIVE_FAIR_KEY = "booth-mode.activeFairId";
 
@@ -38,6 +48,30 @@ export function useProducts(): Product[] | undefined {
   return useLiveQuery(() => db.products.toArray(), []);
 }
 
+export function useTiers(): Tier[] | undefined {
+  return useLiveQuery(
+    async () => (await db.tiers.toArray()).sort((a, b) => a.sortOrder - b.sortOrder),
+    [],
+  );
+}
+
+/** Tier lookup with a safe fallback, so an orphaned tierId never crashes a tile. */
+export function useTierMap(): Map<string, Tier> {
+  const tiers = useTiers();
+  return new Map((tiers ?? []).map((t) => [t.id, t]));
+}
+
+export function tierOf(tiers: Map<string, Tier>, tierId: string): Tier {
+  return (
+    tiers.get(tierId) ?? {
+      id: tierId,
+      label: tierId,
+      sortOrder: 999,
+      color: config.tierFallbackColor,
+    }
+  );
+}
+
 export function useStockPlan(fairId: string | null): StockPlan | undefined {
   return useLiveQuery(async () => {
     if (!fairId) return undefined;
@@ -61,6 +95,16 @@ export function useDaySummary(fairId: string | null): DaySummary | null {
 
   if (!fair || !products || !events) return null;
   return deriveDay(events, { fair, products, plan: plan ?? null });
+}
+
+/** The stock picture: what's here, what's missing, what's still to build. */
+export function useInventory(fairId: string | null): InventorySummary | null {
+  const products = useProducts();
+  const plan = useStockPlan(fairId);
+  const events = useEvents(fairId);
+
+  if (!products || !events) return null;
+  return buildInventory(products, plan ?? null, events);
 }
 
 /** Battery level for the low-battery export warning (plan.md §12). */

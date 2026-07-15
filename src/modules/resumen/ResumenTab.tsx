@@ -8,7 +8,7 @@ import { useState, type ReactNode } from "react";
 import { voidedIds } from "../../lib/derive";
 import { addExpense, voidExpense } from "../../lib/events";
 import { daySummaryCSV, daySummaryMarkdown, downloadText, slugDate } from "../../lib/export";
-import { useDaySummary, useEvents } from "../../lib/hooks";
+import { tierOf, useDaySummary, useEvents, useTierMap } from "../../lib/hooks";
 import { formatMXN } from "../../lib/money";
 import {
   Money,
@@ -16,7 +16,6 @@ import {
   Sheet,
   TierBadge,
   Toast,
-  tierColor,
   useT,
   useToast,
 } from "../../ui/common";
@@ -27,6 +26,7 @@ const CATEGORIES: ExpenseCategory[] = ["booth", "food", "transport", "material",
 export function ResumenTab({ fair }: { fair: EventFair }): ReactNode {
   const t = useT();
   const summary = useDaySummary(fair.id);
+  const tiers = useTierMap();
   const [addingExpense, setAddingExpense] = useState(false);
   const [toast, showToast] = useToast();
 
@@ -58,9 +58,26 @@ export function ResumenTab({ fair }: { fair: EventFair }): ReactNode {
           </div>
         </div>
         <div className="kpi">
-          <div className="k-label">{t("resumen.sales", { count: summary.saleCount })}</div>
-          <div className="k-value tabular">{summary.saleCount}</div>
-          <div className="faint">{t("resumen.voids", { count: summary.voidCount })}</div>
+          <div className="k-label">{t("resumen.grossProfit")}</div>
+          {summary.grossProfitCents === null ? (
+            <>
+              <div className="k-value tabular" style={{ color: "var(--warn)" }}>
+                —
+              </div>
+              <div className="faint">{t("resumen.noCostYet")}</div>
+            </>
+          ) : (
+            <>
+              <div
+                className={`k-value tabular ${summary.grossProfitCents < 0 ? "neg" : "pos"}`}
+              >
+                {formatMXN(summary.grossProfitCents)}
+              </div>
+              <div className="faint">
+                {t("resumen.cogs")} {formatMXN(summary.cogsCents ?? 0)}
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -124,7 +141,7 @@ export function ResumenTab({ fair }: { fair: EventFair }): ReactNode {
                 <tr key={p.productId}>
                   <td>
                     <span className="row" style={{ gap: 6 }}>
-                      <TierBadge tier={p.tier} />
+                      <TierBadge tier={tierOf(tiers, p.tierId)} />
                       {p.productName}
                     </span>
                   </td>
@@ -147,24 +164,25 @@ export function ResumenTab({ fair }: { fair: EventFair }): ReactNode {
           <h2>{t("resumen.byTier")}</h2>
           <div className="stack">
             {Object.entries(summary.byTier)
-              .sort(([a], [b]) => Number(a) - Number(b))
-              .map(([tier, cents]) => (
-                <div key={tier}>
+              .map(([tierId, cents]) => ({ tier: tierOf(tiers, tierId), cents }))
+              .sort((a, b) => a.tier.sortOrder - b.tier.sortOrder)
+              .map(({ tier, cents }) => (
+                <div key={tier.id}>
                   <div className="row between">
-                    <span className="faint">T{tier}</span>
+                    <span className="faint">{tier.label}</span>
                     <Money cents={cents} />
                   </div>
                   <div className="bar">
                     <span
-                      style={{
-                        width: `${(cents / maxTier) * 100}%`,
-                        background: tierColor(Number(tier)),
-                      }}
+                      style={{ width: `${(cents / maxTier) * 100}%`, background: tier.color }}
                     />
                   </div>
                 </div>
               ))}
           </div>
+          <p className="faint" style={{ marginBottom: 0 }}>
+            {t("resumen.tierNote")}
+          </p>
         </div>
       ) : null}
 

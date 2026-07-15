@@ -6,7 +6,7 @@
 // from every derivation.
 
 import { config } from "../config";
-import { lineTotal, sumCents } from "./money";
+import { lineTotal, sumCents, totalUnitCost } from "./money";
 import type {
   BoothEvent,
   Cents,
@@ -18,7 +18,6 @@ import type {
   RestockEntry,
   SaleRecorded,
   StockPlan,
-  Tier,
 } from "../core-data/types";
 
 export interface DeriveContext {
@@ -113,9 +112,7 @@ export function cashExpected(events: readonly BoothEvent[], fair: EventFair): Ce
   const voided = voidedIds(events);
   const cashOut = sumCents(
     events
-      .filter(
-        (e) => e.type === "expenseAdded" && e.paidFromBox && !voided.has(e.id),
-      )
+      .filter((e) => e.type === "expenseAdded" && e.paidFromBox && !voided.has(e.id))
       .map((e) => (e.type === "expenseAdded" ? e.amountCents : 0)),
   );
 
@@ -135,13 +132,14 @@ export function cashCounted(events: readonly BoothEvent[]): Cents | null {
  * Restock list for tomorrow: sold out or at/below threshold, ranked by
  * margin × velocity (plan.md §6 F4).
  *
- * Real margin needs Costing, which arrives with Forge Log sync in v1.5. Until
- * then unit price stands in for margin, so this ranks by revenue velocity.
+ * Margin is real once a product has a cost entered. Products without one fall
+ * back to ranking by revenue, which is the best available proxy — and the Plan
+ * tab nags about missing costs precisely so this stops being a guess.
  */
 export function restockList(
   events: readonly BoothEvent[],
   ctx: DeriveContext,
-  threshold = config.restockThresholdDefault,
+  fallbackThreshold = config.restockThresholdDefault,
 ): RestockEntry[] {
   const sold = soldByVariant(events);
   const remaining = remainingByVariant(events, ctx.plan);
@@ -154,18 +152,22 @@ export function restockList(
 
     const key = variantKey(line.productId, line.variant);
     const left = remaining.get(key) ?? 0;
+    const threshold = product.restockThreshold ?? fallbackThreshold;
     if (left > threshold) continue;
 
     const qtySold = sold.get(key) ?? 0;
+    const cost = totalUnitCost(product.cost);
+    const perUnit = cost === 0 ? product.sellingPriceCents : product.sellingPriceCents - cost;
+
     entries.push({
       productId: line.productId,
       productName: product.name,
       variant: line.variant,
-      tier: product.tier,
+      tierId: product.tierId,
       remaining: left,
       sold: qtySold,
       soldOut: left <= 0,
-      score: product.priceCents * qtySold,
+      score: perUnit * qtySold,
     });
   }
 
@@ -181,21 +183,20 @@ export function restockList(
 export function deriveDay(
   events: readonly BoothEvent[],
   ctx: DeriveContext,
-  threshold = config.restockThresholdDefault,
+  fallbackThreshold = config.restockThresholdDefault,
 ): DaySummary {
   const sales = liveSales(events);
   const voided = voidedIds(events);
   const productById = new Map(ctx.products.map((p) => [p.id, p]));
 
-  const byPayType = Object.fromEntries(PAY_TYPES.map((p) => [p, 0])) as Record<
-    PayType,
-    Cents
-  >;
+  const byPayType = Object.fromEntries(PAY_TYPES.map((p) => [p, 0])) as Record<PayType, Cents>;
   const byTier: Record<string, Cents> = {};
   const tallies = new Map<string, ProductTally>();
 
   let grossCents = 0;
   let unitsSold = 0;
+  let cogsCents = 0;
+  let anyCostMissing = false;
 
   for (const sale of sales) {
     const total = saleTotal(sale);
@@ -204,23 +205,34 @@ export function deriveDay(
 
     for (const item of sale.items) {
       const product = productById.get(item.productId);
-      const tier: Tier = product?.tier ?? 1;
+      const tierId = product?.tierId ?? "sin-tier";
       const itemTotal = lineTotal(item.unitPriceCents, item.qty, item.discount);
 
       unitsSold += item.qty;
-      byTier[tier] = (byTier[tier] ?? 0) + itemTotal;
+      byTier[tierId] = (byTier[tierId] ?? 0) + itemTotal;
+
+      const unitCost = product ? totalUnitCost(product.cost) : 0;
+      const lineCost = unitCost === 0 ? null : unitCost * item.qty;
+      if (lineCost === null) anyCostMissing = true;
+      else cogsCents += lineCost;
 
       const existing = tallies.get(item.productId);
       if (existing) {
         existing.qty += item.qty;
         existing.grossCents += itemTotal;
+        if (existing.profitCents !== null && lineCost !== null) {
+          existing.profitCents += itemTotal - lineCost;
+        } else {
+          existing.profitCents = null;
+        }
       } else {
         tallies.set(item.productId, {
           productId: item.productId,
           productName: product?.name ?? item.productId,
-          tier,
+          tierId,
           qty: item.qty,
           grossCents: itemTotal,
+          profitCents: lineCost === null ? null : itemTotal - lineCost,
         });
       }
     }
@@ -245,13 +257,17 @@ export function deriveDay(
     expensesCents,
     boothFeeCents,
     netCents: grossCents - expensesCents - boothFeeCents,
+    // A COGS figure that quietly skips the products missing a cost would be a
+    // lie in the vendor's favour, so it is withheld until every cost is known.
+    cogsCents: anyCostMissing ? null : cogsCents,
+    grossProfitCents: anyCostMissing ? null : grossCents - cogsCents,
     unitsSold,
     unitsPacked,
     sellThroughPct: unitsPacked === 0 ? 0 : (unitsSold / unitsPacked) * 100,
     cashExpectedCents: expected,
     cashCountedCents: counted,
     cashDeltaCents: counted === null ? null : counted - expected,
-    restockList: restockList(events, ctx, threshold),
+    restockList: restockList(events, ctx, fallbackThreshold),
     saleCount: sales.length,
     voidCount: events.filter((e) => e.type === "saleVoided").length,
   };

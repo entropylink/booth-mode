@@ -9,6 +9,7 @@ import {
   variantKey,
 } from "./derive";
 import { lineTotal, sumCents } from "./money";
+import { EMPTY_COST } from "../core-data/types";
 import type {
   BoothEvent,
   EventFair,
@@ -60,19 +61,27 @@ const FAIR: EventFair = {
 const PRODUCTS: Product[] = [
   {
     id: "coasters",
+    sku: "10",
     name: "Coasters",
-    tier: 2,
+    tierId: "mid",
     variants: ["Roble", "Nogal"],
-    priceCents: 12000, // $120
+    cost: EMPTY_COST,
+    housePriceCents: 9600,
+    sellingPriceCents: 12000, // $120
     stockByVariant: {},
+    active: true,
   },
   {
     id: "llavero",
+    sku: "29",
     name: "Llavero",
-    tier: 1,
+    tierId: "impulse",
     variants: ["—"],
-    priceCents: 4500, // $45
+    cost: EMPTY_COST,
+    housePriceCents: 3600,
+    sellingPriceCents: 4500, // $45
     stockByVariant: {},
+    active: true,
   },
 ];
 
@@ -80,9 +89,9 @@ const PLAN: StockPlan = {
   id: "plan1",
   eventId: "fair1",
   lines: [
-    { productId: "coasters", variant: "Roble", target: 12, packed: 10 },
-    { productId: "coasters", variant: "Nogal", target: 8, packed: 3 },
-    { productId: "llavero", variant: "—", target: 20, packed: 20 },
+    { productId: "coasters", variant: "Roble", target: 12, made: true, packed: 10 },
+    { productId: "coasters", variant: "Nogal", target: 8, made: false, packed: 3 },
+    { productId: "llavero", variant: "—", target: 20, made: true, packed: 20 },
   ],
 };
 
@@ -207,10 +216,29 @@ describe("deriveDay — golden day", () => {
 
   it("tallies by product and tier", () => {
     expect(summary.byProduct).toEqual([
-      { productId: "coasters", productName: "Coasters", tier: 2, qty: 5, grossCents: 56400 },
-      { productId: "llavero", productName: "Llavero", tier: 1, qty: 1, grossCents: 4500 },
+      {
+        productId: "coasters",
+        productName: "Coasters",
+        tierId: "mid",
+        qty: 5,
+        grossCents: 56400,
+        profitCents: null, // no cost captured
+      },
+      {
+        productId: "llavero",
+        productName: "Llavero",
+        tierId: "impulse",
+        qty: 1,
+        grossCents: 4500,
+        profitCents: null,
+      },
     ]);
-    expect(summary.byTier).toEqual({ "1": 4500, "2": 56400 });
+    expect(summary.byTier).toEqual({ impulse: 4500, mid: 56400 });
+  });
+
+  it("withholds profit while any sold product has no cost", () => {
+    expect(summary.grossProfitCents).toBeNull();
+    expect(summary.cogsCents).toBeNull();
   });
 
   it("measures sell-through against what was packed, not stocked", () => {
@@ -225,11 +253,11 @@ describe("deriveDay — golden day", () => {
         productId: "coasters",
         productName: "Coasters",
         variant: "Nogal",
-        tier: 2,
+        tierId: "mid",
         remaining: 0,
         sold: 3,
         soldOut: true,
-        score: 36000,
+        score: 36000, // no cost yet, so revenue stands in for margin
       },
     ]);
   });
@@ -306,12 +334,30 @@ describe("cashExpected", () => {
 
 // --- the fair-day drill (plan.md §6 F2 accept) ------------------------------
 
+const drillProduct = (
+  n: number,
+  name: string,
+  tierId: string,
+  sellingPriceCents: number,
+): Product => ({
+  id: `p${n}`,
+  sku: String(n),
+  name,
+  tierId,
+  variants: ["—"],
+  cost: EMPTY_COST,
+  housePriceCents: Math.round(sellingPriceCents / 1.25),
+  sellingPriceCents,
+  stockByVariant: {},
+  active: true,
+});
+
 const DRILL_PRODUCTS: Product[] = [
-  { id: "p1", name: "Llavero", tier: 1, variants: ["—"], priceCents: 4500, stockByVariant: {} },
-  { id: "p2", name: "Coasters", tier: 2, variants: ["—"], priceCents: 12000, stockByVariant: {} },
-  { id: "p3", name: "Tabla", tier: 3, variants: ["—"], priceCents: 25000, stockByVariant: {} },
-  { id: "p4", name: "Cuadro", tier: 4, variants: ["—"], priceCents: 48000, stockByVariant: {} },
-  { id: "p5", name: "Pieza", tier: 5, variants: ["—"], priceCents: 120000, stockByVariant: {} },
+  drillProduct(1, "Llavero", "impulse", 4500),
+  drillProduct(2, "Coasters", "mid", 12000),
+  drillProduct(3, "Tabla", "mid", 25000),
+  drillProduct(4, "Cuadro", "flagship", 48000),
+  drillProduct(5, "Pieza", "hero", 120000),
 ];
 
 const VOIDED_INDEXES = [5, 17, 42];
@@ -340,7 +386,7 @@ function drillEvents(): BoothEvent[] {
       id: `d${i}`,
       eventId: "fair1",
       ts: ts(100 + i),
-      items: [item(product.id, "—", qty, product.priceCents, discount)],
+      items: [item(product.id, "—", qty, product.sellingPriceCents, discount)],
       payType: PAY_CYCLE[i % 5],
     });
   }
@@ -367,6 +413,7 @@ describe("fair-day drill — 50 sales, 3 voids, discounts", () => {
       productId: p.id,
       variant: "—",
       target: 40,
+      made: true,
       packed: 40,
     })),
   };
@@ -383,7 +430,7 @@ describe("fair-day drill — 50 sales, 3 voids, discounts", () => {
       if (VOIDED_INDEXES.includes(i)) continue;
       const product = DRILL_PRODUCTS[i % 5];
       const qty = (i % 3) + 1;
-      const gross = product.priceCents * qty;
+      const gross = product.sellingPriceCents * qty;
       total += i % 7 === 0 ? Math.round((gross * 90) / 100) : gross;
     }
     return total;
