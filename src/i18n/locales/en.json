@@ -228,5 +228,34 @@
     "no": "No",
     "required": "Required",
     "invalidAmount": "Invalid amount"
+  },
+  "csv": {
+    "emptyFile": "The file is empty.",
+    "missingProductColumn": "No product column found.",
+    "badValue": "Row {{row}}: {{column}} is not valid — \"{{value}}\"",
+    "blank": "blank",
+    "inferredColumn": "Column {{index}} has no header → read as {{column}} (values: {{samples}})",
+    "col": {
+      "sku": "SKU",
+      "product": "product",
+      "variant": "variant",
+      "tier": "tier",
+      "machine": "machine",
+      "cost_material": "material cost",
+      "cost_machine": "machine cost",
+      "cost_labor": "labour cost",
+      "cost_consumable": "consumable cost",
+      "cost_packaging": "packaging cost",
+      "house_price": "house price",
+      "selling_price": "selling price",
+      "current_qty": "stock",
+      "goal_qty": "goal",
+      "made": "made",
+      "packed_qty": "packed",
+      "production_minutes": "production minutes",
+      "restock_threshold": "restock threshold",
+      "active": "active",
+      "notes": "notes"
+    }
   }
 }

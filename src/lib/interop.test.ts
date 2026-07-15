@@ -42,7 +42,7 @@ describe("Booth Mode reads what Forge Log writes", () => {
   });
 
   it("imports the whole catalog with no errors and nothing guessed", () => {
-    expect(result.errors).toEqual([]);
+    expect(result.issues).toEqual([]);
     expect(result.unknownColumns).toEqual([]);
     // Forge Log labels its columns, so nothing needs sniffing.
     expect(result.inferred).toEqual([]);
@@ -130,7 +130,7 @@ describe("Booth Mode reads what Forge Log writes", () => {
     // The point of the whole suite: Booth Mode's "—" becomes a number the
     // moment Forge Log has costed the product.
     const costed = importStockPlanCSV(FORGE_COSTED);
-    expect(costed.errors).toEqual([]);
+    expect(costed.issues).toEqual([]);
 
     const product = costed.products[0];
     expect(product).toMatchObject({ sku: "79", name: "LEATHER KEYCHAIN", machine: "laser" });
@@ -201,7 +201,7 @@ describe("Booth Mode reads what Forge Log writes", () => {
       exportStockPlanCSV(inventory.lines, result.products, result.tiers),
     );
 
-    expect(back.errors).toEqual([]);
+    expect(back.issues).toEqual([]);
     expect(back.products).toEqual(result.products);
     expect(back.tiers).toEqual(result.tiers);
     expect(back.lines).toEqual(result.lines);

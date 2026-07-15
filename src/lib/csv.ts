@@ -12,6 +12,8 @@ import {
   serializeTemplateCSV,
   stripDiacritics,
   TEMPLATE_HEADER,
+  type InferredColumn,
+  type TemplateIssue,
   type TemplateOutRow,
 } from "../core-data/template";
 import {
@@ -30,8 +32,9 @@ export interface ImportResult {
   tiers: Tier[];
   products: Product[];
   lines: StockPlanLine[];
-  errors: string[];
-  inferred: string[];
+  /** Structured so each app can phrase them in its own language. */
+  issues: TemplateIssue[];
+  inferred: InferredColumn[];
   unknownColumns: string[];
 }
 
@@ -62,7 +65,7 @@ export function fairPriceFromHouse(housePriceCents: Cents): Cents {
 
 export function importStockPlanCSV(text: string): ImportResult {
   const parsed = parseTemplateCSV(text);
-  const errors = [...parsed.errors];
+  const issues = [...parsed.issues];
 
   const tiersById = new Map<string, Tier>();
   const productsById = new Map<string, Product>();
@@ -95,7 +98,7 @@ export function importStockPlanCSV(text: string): ImportResult {
       sellingPriceCents = fairPriceFromHouse(row.housePriceCents);
     }
     if (sellingPriceCents === null) {
-      errors.push(`Fila ${row.rowNum}: ${row.product} sin precio`);
+      issues.push({ kind: "bad-value", row: row.rowNum, column: "selling_price", value: "" });
       continue;
     }
 
@@ -112,9 +115,7 @@ export function importStockPlanCSV(text: string): ImportResult {
     if (row.sku !== "") {
       const claimedBy = seenSku.get(row.sku);
       if (claimedBy !== undefined && claimedBy !== row.product) {
-        errors.push(
-          `Fila ${row.rowNum}: SKU ${row.sku} usado por "${claimedBy}" y "${row.product}"`,
-        );
+        issues.push({ kind: "bad-value", row: row.rowNum, column: "sku", value: row.sku });
         continue;
       }
       seenSku.set(row.sku, row.product);
@@ -144,7 +145,7 @@ export function importStockPlanCSV(text: string): ImportResult {
     }
 
     if (lines.some((l) => l.productId === id && l.variant === variant)) {
-      errors.push(`Fila ${row.rowNum}: ${row.product} / ${variant} duplicado`);
+      issues.push({ kind: "bad-value", row: row.rowNum, column: "variant", value: variant });
       continue;
     }
 
@@ -164,7 +165,7 @@ export function importStockPlanCSV(text: string): ImportResult {
     tiers: [...tiersById.values()],
     products: [...productsById.values()],
     lines,
-    errors,
+    issues,
     inferred: parsed.inferred,
     unknownColumns: parsed.unknownColumns,
   };

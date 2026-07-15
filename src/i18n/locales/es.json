@@ -228,5 +228,34 @@
     "no": "No",
     "required": "Requerido",
     "invalidAmount": "Monto inválido"
+  },
+  "csv": {
+    "emptyFile": "El archivo está vacío.",
+    "missingProductColumn": "No se encontró la columna de producto.",
+    "badValue": "Fila {{row}}: {{column}} no es válido — \"{{value}}\"",
+    "blank": "vacío",
+    "inferredColumn": "La columna {{index}} no tiene encabezado → se leyó como {{column}} (valores: {{samples}})",
+    "col": {
+      "sku": "SKU",
+      "product": "producto",
+      "variant": "variante",
+      "tier": "tier",
+      "machine": "máquina",
+      "cost_material": "costo de material",
+      "cost_machine": "costo de máquina",
+      "cost_labor": "costo de mano de obra",
+      "cost_consumable": "costo de consumible",
+      "cost_packaging": "costo de empaque",
+      "house_price": "precio casa",
+      "selling_price": "precio venta",
+      "current_qty": "existencia",
+      "goal_qty": "objetivo",
+      "made": "hecho",
+      "packed_qty": "empacado",
+      "production_minutes": "minutos de producción",
+      "restock_threshold": "umbral",
+      "active": "activo",
+      "notes": "notas"
+    }
   }
 }

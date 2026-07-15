@@ -103,11 +103,33 @@ export interface TemplateOutRow extends Omit<TemplateRow, "rowNum"> {
   goalProfitCents: number | null;
 }
 
+/**
+ * A problem, described rather than phrased.
+ *
+ * This module is shared by two apps with different default languages (Forge Log
+ * is EN, Booth Mode is ES), and it deliberately has no dependencies, so it
+ * cannot reach either one's i18n. Returning a sentence here would hardcode a
+ * language into the file format; returning a shape lets each app say it in its
+ * own words.
+ */
+export type TemplateIssue =
+  | { kind: "empty-file" }
+  | { kind: "missing-product-column" }
+  | { kind: "bad-value"; row: number; column: InputColumn; value: string };
+
+/** An unlabelled column recovered by sniffing its values. */
+export interface InferredColumn {
+  /** 1-based, as a spreadsheet counts. */
+  index: number;
+  column: InputColumn;
+  samples: string[];
+}
+
 export interface ParseResult {
   rows: TemplateRow[];
-  errors: string[];
+  issues: TemplateIssue[];
   /** Unlabelled columns recovered by sniffing, so the user can sanity-check. */
-  inferred: string[];
+  inferred: InferredColumn[];
   /** Headers we did not recognise. Ignored, but surfaced rather than hidden. */
   unknownColumns: string[];
 }
@@ -311,22 +333,21 @@ export function looksLikeMachine(raw: string): boolean {
   return s !== "" && MACHINE_WORDS.some((w) => s === w || s.includes(w));
 }
 
-function uniquePreview(values: string[]): string {
-  const unique = [...new Set(values.map((v) => v.toLowerCase()))];
-  return unique.slice(0, 4).join(", ") + (unique.length > 4 ? "…" : "");
+function samplesOf(values: string[]): string[] {
+  return [...new Set(values.map((v) => v.toLowerCase()))].slice(0, 4);
 }
 
 // --- header mapping ---------------------------------------------------------
 
 interface ColumnMap {
   cols: Partial<Record<InputColumn, number>>;
-  inferred: string[];
+  inferred: InferredColumn[];
   unknownColumns: string[];
 }
 
 function mapHeaders(header: string[], body: string[][]): ColumnMap {
   const cols: Partial<Record<InputColumn, number>> = {};
-  const inferred: string[] = [];
+  const inferred: InferredColumn[] = [];
   const unknownColumns: string[] = [];
   const unnamed: number[] = [];
 
@@ -363,21 +384,17 @@ function mapHeaders(header: string[], body: string[][]): ColumnMap {
 
     if (cols.made === undefined && values.every((v) => parseMadeCell(v))) {
       cols.made = index;
-      inferred.push(
-        `Columna ${index + 1} sin encabezado → "made" (valores: ${uniquePreview(values)})`,
-      );
+      inferred.push({ index: index + 1, column: "made", samples: samplesOf(values) });
       continue;
     }
 
     if (cols.machine === undefined && values.every((v) => looksLikeMachine(v))) {
       cols.machine = index;
-      inferred.push(
-        `Columna ${index + 1} sin encabezado → "machine" (valores: ${uniquePreview(values)})`,
-      );
+      inferred.push({ index: index + 1, column: "machine", samples: samplesOf(values) });
       continue;
     }
 
-    unknownColumns.push(`(columna ${index + 1} sin encabezado)`);
+    unknownColumns.push(`#${index + 1}`);
   }
 
   return { cols, inferred, unknownColumns };
@@ -392,20 +409,20 @@ function mapHeaders(header: string[], body: string[][]): ColumnMap {
 export function parseTemplateCSV(text: string): ParseResult {
   const rows = parseCSV(text);
   if (rows.length === 0) {
-    return { rows: [], errors: ["CSV vacío"], inferred: [], unknownColumns: [] };
+    return { rows: [], issues: [{ kind: "empty-file" }], inferred: [], unknownColumns: [] };
   }
 
   const { cols, inferred, unknownColumns } = mapHeaders(rows[0], rows.slice(1));
   if (cols.product === undefined) {
     return {
       rows: [],
-      errors: ["Falta la columna de producto"],
+      issues: [{ kind: "missing-product-column" }],
       inferred,
       unknownColumns,
     };
   }
 
-  const errors: string[] = [];
+  const issues: TemplateIssue[] = [];
   const out: TemplateRow[] = [];
 
   rows.slice(1).forEach((cells, i) => {
@@ -419,57 +436,59 @@ export function parseTemplateCSV(text: string): ParseResult {
     if (product === "") return; // blank spacer row
     if (isTotalsRow(product)) return; // the spreadsheet's own TOTAL line
 
-    // Each label carries its own adjective: Spanish agreement is gendered and
-    // plural, so a generic `${label} inválido` produces "existencia inválido".
-    const money = (key: InputColumn, complaint: string): number | null | "bad" => {
+    const bad = (column: InputColumn, value: string): void => {
+      issues.push({ kind: "bad-value", row: rowNum, column, value });
+    };
+
+    const money = (key: InputColumn): number | null | "bad" => {
       const raw = cell(key);
       if (raw === "") return null;
       const parsed = parseMoneyCents(raw);
       if (parsed === null || parsed < 0) {
-        errors.push(`Fila ${rowNum}: ${complaint} "${raw}"`);
+        bad(key, raw);
         return "bad";
       }
       return parsed;
     };
 
-    const house = money("house_price", "precio casa inválido");
+    const house = money("house_price");
     if (house === "bad") return;
-    const selling = money("selling_price", "precio venta inválido");
+    const selling = money("selling_price");
     if (selling === "bad") return;
 
-    const costCells: [InputColumn, string][] = [
-      ["cost_material", "costo material inválido"],
-      ["cost_machine", "costo máquina inválido"],
-      ["cost_labor", "costo mano de obra inválido"],
-      ["cost_consumable", "costo consumible inválido"],
-      ["cost_packaging", "costo empaque inválido"],
+    const costColumns: InputColumn[] = [
+      "cost_material",
+      "cost_machine",
+      "cost_labor",
+      "cost_consumable",
+      "cost_packaging",
     ];
     const costs: number[] = [];
-    for (const [key, complaint] of costCells) {
-      const value = money(key, complaint);
+    for (const key of costColumns) {
+      const value = money(key);
       if (value === "bad") return;
       costs.push(value ?? 0);
     }
 
-    const int = (key: InputColumn, complaint: string): number | null | "bad" => {
+    const int = (key: InputColumn): number | null | "bad" => {
       const raw = cell(key);
       const parsed = parseIntCell(raw);
       if (parsed === null || parsed < 0) {
-        errors.push(`Fila ${rowNum}: ${complaint} "${raw}"`);
+        bad(key, raw);
         return "bad";
       }
       return raw === "" ? null : parsed;
     };
 
-    const currentQty = int("current_qty", "existencia inválida");
+    const currentQty = int("current_qty");
     if (currentQty === "bad") return;
-    const goalQty = int("goal_qty", "objetivo inválido");
+    const goalQty = int("goal_qty");
     if (goalQty === "bad") return;
-    const packedQty = int("packed_qty", "empacado inválido");
+    const packedQty = int("packed_qty");
     if (packedQty === "bad") return;
-    const minutes = int("production_minutes", "minutos inválidos");
+    const minutes = int("production_minutes");
     if (minutes === "bad") return;
-    const threshold = int("restock_threshold", "umbral inválido");
+    const threshold = int("restock_threshold");
     if (threshold === "bad") return;
 
     out.push({
@@ -497,7 +516,7 @@ export function parseTemplateCSV(text: string): ParseResult {
     });
   });
 
-  return { rows: out, errors, inferred, unknownColumns };
+  return { rows: out, issues, inferred, unknownColumns };
 }
 
 // --- serialize --------------------------------------------------------------

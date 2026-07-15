@@ -16,6 +16,7 @@ import {
 } from "../../lib/csv";
 import { downloadText, slugDate } from "../../lib/export";
 import { toMakeQueue } from "../../lib/inventory";
+import { formatInferred, formatIssue } from "../../lib/issues";
 import { useInventory, useProducts, useStockPlan, useTierMap, tierOf } from "../../lib/hooks";
 import { formatMXN, formatMXNCompact } from "../../lib/money";
 import {
@@ -412,8 +413,8 @@ function ImportReport({
             <strong style={{ color: "var(--warn)" }}>{t("plan.inferred")}</strong>
             <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
               {report.inferred.map((line) => (
-                <li key={line} className="faint">
-                  {line}
+                <li key={line.index} className="faint">
+                  {formatInferred(t, line)}
                 </li>
               ))}
             </ul>
@@ -426,15 +427,15 @@ function ImportReport({
           </div>
         ) : null}
 
-        {report.errors.length > 0 ? (
+        {report.issues.length > 0 ? (
           <div className="card" style={{ margin: 0, borderColor: "var(--danger)" }}>
             <strong style={{ color: "var(--danger)" }}>
-              {t("plan.importErrors", { count: report.errors.length })}
+              {t("plan.importErrors", { count: report.issues.length })}
             </strong>
             <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
-              {report.errors.slice(0, 12).map((line) => (
-                <li key={line} className="faint">
-                  {line}
+              {report.issues.slice(0, 12).map((issue, i) => (
+                <li key={i} className="faint">
+                  {formatIssue(t, issue)}
                 </li>
               ))}
             </ul>

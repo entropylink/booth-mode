@@ -73,7 +73,7 @@ describe("importing the real feria stock plan", () => {
   const result = importStockPlanCSV(REAL_CSV);
 
   it("imports every product row without errors", () => {
-    expect(result.errors).toEqual([]);
+    expect(result.issues).toEqual([]);
     // 63 lines: 1 header + 61 products + 1 TOTAL row.
     expect(result.products).toHaveLength(61);
     expect(result.lines).toHaveLength(61);
@@ -101,12 +101,13 @@ describe("importing the real feria stock plan", () => {
     expect(result.tiers.every((t) => /^#[0-9a-f]{6}$/i.test(t.color))).toBe(true);
   });
 
-  it("infers the two unlabelled columns and says so", () => {
-    expect(result.inferred).toHaveLength(2);
-    expect(result.inferred[0]).toContain('"made"');
-    expect(result.inferred[0]).toContain("ya");
-    expect(result.inferred[1]).toContain('"machine"');
-    expect(result.inferred[1]).toContain("laser");
+  it("infers the two unlabelled columns and says which and from what", () => {
+    // Structured rather than phrased: the same template.ts serves Booth Mode
+    // (Spanish) and Forge Log (English), so each app words this itself.
+    expect(result.inferred).toEqual([
+      { index: 9, column: "made", samples: ["ya"] },
+      { index: 10, column: "machine", samples: ["laser", "cameo", "craft"] },
+    ]);
   });
 
   it("does not report the derived GOAL VALUE column as unknown", () => {
@@ -210,7 +211,7 @@ describe("canonical template round-trip", () => {
     const exported = exportStockPlanCSV(inventory.lines, first.products, first.tiers);
     const second = importStockPlanCSV(exported);
 
-    expect(second.errors).toEqual([]);
+    expect(second.issues).toEqual([]);
     expect(second.unknownColumns).toEqual([]);
     expect(second.products).toEqual(first.products);
     expect(second.lines).toEqual(first.lines);
@@ -225,7 +226,7 @@ describe("canonical template round-trip", () => {
         '2,"Dice ""Hero""",,Hero – exhibition,800,1,2',
       ].join("\n"),
     );
-    expect(first.errors).toEqual([]);
+    expect(first.issues).toEqual([]);
 
     const plan: StockPlan = { id: "p", eventId: "f", lines: first.lines };
     const inventory = buildInventory(first.products, plan, []);
@@ -250,7 +251,7 @@ describe("importing the canonical template", () => {
   const result = importStockPlanCSV(csv);
 
   it("reads the full cost breakdown", () => {
-    expect(result.errors).toEqual([]);
+    expect(result.issues).toEqual([]);
     expect(result.products[0].cost).toEqual({
       materialCents: 1200,
       machineCents: 300,
@@ -298,7 +299,7 @@ describe("importer tolerance", () => {
     const result = importStockPlanCSV(
       "Artículo,Nivel,Precio Venta,Existencia,Meta\nPieza,Hero – exhibition,1200,2,3",
     );
-    expect(result.errors).toEqual([]);
+    expect(result.issues).toEqual([]);
     expect(result.products[0]).toMatchObject({ name: "Pieza", sellingPriceCents: 120000 });
     expect(result.lines[0]).toMatchObject({ target: 3 });
   });
@@ -325,11 +326,13 @@ describe("importer tolerance", () => {
 
     expect(result.products).toHaveLength(1);
     expect(result.lines).toHaveLength(1);
-    expect(result.errors).toEqual([
-      'Fila 3: precio casa inválido "abc"',
-      'Fila 4: existencia inválida "x"',
-      'Fila 5: objetivo inválido "-4"',
-      'Fila 6: SKU 1 usado por "Bueno" y "SkuRobado"',
+    // Issues are structured, not phrased: template.ts is shared with Forge Log,
+    // which defaults to English, so the wording belongs to each app's i18n.
+    expect(result.issues).toEqual([
+      { kind: 'bad-value', row: 3, column: 'house_price', value: 'abc' },
+      { kind: 'bad-value', row: 4, column: 'current_qty', value: 'x' },
+      { kind: 'bad-value', row: 5, column: 'goal_qty', value: '-4' },
+      { kind: 'bad-value', row: 6, column: 'sku', value: '1' },
     ]);
   });
 
@@ -342,11 +345,11 @@ describe("importer tolerance", () => {
   it("refuses a file with no product column", () => {
     const result = importStockPlanCSV("foo,bar\n1,2");
     expect(result.products).toEqual([]);
-    expect(result.errors[0]).toContain("Falta la columna de producto");
+    expect(result.issues).toEqual([{ kind: "missing-product-column" }]);
   });
 
   it("handles an empty file", () => {
-    expect(importStockPlanCSV("").errors).toEqual(["CSV vacío"]);
+    expect(importStockPlanCSV("").issues).toEqual([{ kind: "empty-file" }]);
   });
 
   it("groups variants of one SKU into a single product", () => {
