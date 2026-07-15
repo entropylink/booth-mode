@@ -1,0 +1,2 @@
+sku,product,variant,tier,machine,cost_material,cost_machine,cost_labor,cost_consumable,cost_packaging,house_price,selling_price,current_qty,goal_qty,made,packed_qty,production_minutes,restock_threshold,active,notes,unit_cost,margin_unit,margin_pct,to_make,goal_value,goal_profit
+79,LEATHER KEYCHAIN,,Mid – moderate,laser,18.00,12.00,26.25,6.00,2.00,150.00,188.00,12,0,,0,,,yes,,64.25,123.75,65.8,0,0.00,
