@@ -1,2 +1,2 @@
 // F1 — Stock planning (plan.md §6). Phase P1.
-export {};
+export { PlanTab, FairSheet } from "./PlanTab";
