@@ -14,6 +14,20 @@
       "runtimeArgs": ["--prefix", "../forge-log", "run", "dev"],
       "port": 5174,
       "autoPort": true
+    },
+    {
+      "name": "booth-mode-preview",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "preview"],
+      "port": 4173,
+      "autoPort": true
+    },
+    {
+      "name": "forge-log-preview",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "../forge-log", "run", "preview"],
+      "port": 4174,
+      "autoPort": true
     }
   ]
 }
