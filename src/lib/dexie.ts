@@ -9,12 +9,35 @@
 import Dexie, { type Table } from "dexie";
 import type { BoothEvent, EventFair, Product, StockPlan, Tier } from "../core-data/types";
 
+/** A soft-delete marker, so a delete propagates through sync (see sync/merge.ts). */
+export interface TombRow {
+  collection: string;
+  id: string;
+  deletedAt: string;
+}
+
+/**
+ * Set true by the sync engine while it applies REMOTE records, so the write
+ * hooks below preserve the remote `updatedAt` instead of stamping "now" — which
+ * would defeat last-write-wins. User writes run with this false and get stamped.
+ */
+let applyingSync = false;
+export function setApplyingSync(v: boolean): void {
+  applyingSync = v;
+}
+
+const nowIso = (): string => new Date().toISOString();
+
+/** Tables whose rows carry a `updatedAt` LWW clock and sync as definitions. */
+const SYNC_RECORD_TABLES = ["products", "tiers", "fairs", "stockPlans"] as const;
+
 export class BoothModeDB extends Dexie {
   tiers!: Table<Tier, string>;
   products!: Table<Product, string>;
   fairs!: Table<EventFair, string>;
   stockPlans!: Table<StockPlan, string>;
   events!: Table<BoothEvent, string>;
+  tombstones!: Table<TombRow, [string, string]>;
 
   constructor() {
     super("booth-mode");
@@ -35,10 +58,39 @@ export class BoothModeDB extends Dexie {
       stockPlans: "id, eventId",
       events: "id, eventId, ts, type, [eventId+ts]",
     });
+
+    // v3: sync. A tombstones table for propagating deletes; write hooks stamp
+    // updatedAt on definition rows. Additive — existing tables carry forward.
+    this.version(3).stores({
+      tombstones: "[collection+id], collection",
+    });
+
+    for (const name of SYNC_RECORD_TABLES) {
+      const table = this.table(name);
+      table.hook("creating", (_pk, obj: { updatedAt?: string }) => {
+        if (!applyingSync && !obj.updatedAt) obj.updatedAt = nowIso();
+      });
+      table.hook("updating", (_mods, _pk, _obj) => {
+        // User edit → bump the clock. Sync-applied write → leave it as-is.
+        return applyingSync ? undefined : { updatedAt: nowIso() };
+      });
+    }
   }
 }
 
 export const db = new BoothModeDB();
+
+/**
+ * Delete a definition record AND drop a tombstone, so the delete survives sync
+ * instead of the record resurrecting from another device. Use this everywhere a
+ * synced record is deleted.
+ */
+export async function softDelete(collection: string, id: string): Promise<void> {
+  await db.transaction("rw", db.table(collection), db.tombstones, async () => {
+    await db.table(collection).delete(id);
+    await db.tombstones.put({ collection, id, deletedAt: nowIso() });
+  });
+}
 
 export function newId(prefix: string): string {
   const rand =

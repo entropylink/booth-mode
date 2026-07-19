@@ -257,5 +257,21 @@
       "active": "activo",
       "notes": "notas"
     }
+  },
+  "sync": {
+    "title": "Sincronizar",
+    "configHint": "La sincronización está apagada hasta que conectes un proyecto de Firebase. Crea uno gratis (ver docs/firebase-setup.md) y pega aquí su objeto de config.",
+    "saveConfig": "Guardar config",
+    "disconnect": "Desconectar este proyecto",
+    "email": "Correo",
+    "password": "Contraseña",
+    "signIn": "Entrar",
+    "signUp": "Crear cuenta",
+    "google": "Continuar con Google",
+    "signOut": "Salir",
+    "syncNow": "Sincronizar ahora",
+    "syncing": "Sincronizando…",
+    "result": "Bajó {{pulled}}, subió {{pushed}}.",
+    "lastSync": "Última sync: {{when}}"
   }
 }

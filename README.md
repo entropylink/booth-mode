@@ -15,7 +15,7 @@ Full spec: [plan.md](./plan.md)
 | P2 | Sale mode + cash/change engine (F2) | done |
 | P3 | Float counts, expenses, day summary, exports (F3/F4) | done |
 | P4 | Store builds + standalone license unlock | not started |
-| P5 | Forge Log sync, restock alerts, multi-day carryover | blocked on Forge Log sync layer |
+| P5 | Forge Log sync | **done** (opt-in Firebase; restock alerts + multi-day still pending) |
 
 Everything works with no network. There is no Firebase dependency in v1 — sync
 is a v1.5 concern (plan.md §3).
@@ -58,6 +58,28 @@ Forge Log (workshop) owns costs, production times, machines, tiers and workshop
 stock. Booth Mode (fair) owns targets, packing, sales and cash. They exchange
 one CSV; `src/lib/interop.test.ts` imports a real file emitted by Forge Log and
 fails if the two ever drift apart.
+
+They also **sync live** through one Firebase account (opt-in) — see below.
+
+### Sync (opt-in, v1.5)
+
+Off until you connect a Firebase project — see [docs/firebase-setup.md](docs/firebase-setup.md).
+With no config the app is exactly the offline app; firebase isn't even loaded.
+
+- `src/sync/merge.ts` — the pure merge core, **shared byte-for-byte with Forge
+  Log**. Definitions merge last-write-wins by `updatedAt`; the money event log
+  merges by append-only union (no conflicts possible); deletes propagate as
+  tombstones. Exhaustively unit-tested — this is where money integrity lives.
+- `src/sync/engine.ts` — orchestrates one pass (pull → merge → write local →
+  push) behind a `SyncTransport` + `LocalStore` interface, so the whole flow is
+  tested against in-memory fakes (`src/sync/fake.ts`) with no Firebase. One test
+  proves a Booth sale reaches the Forge Log device; another that 50 sales + 3
+  voids cross intact.
+- `src/sync/firestore.ts` — the Firestore transport (shared). Thin CRUD; the
+  tested engine does the thinking. Loaded lazily so firebase stays out of the
+  main bundle.
+- `src/lib/firebase.ts` — runtime config pasted into the app, not build-time env
+  vars, so connecting a project needs no rebuild.
 
 Tiers are **hypotheses about what will sell**, not fixed price bands — which is
 why they're editable named data rather than a 1–5 enum. Booth Mode's sales

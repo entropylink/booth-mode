@@ -14,6 +14,7 @@ import { VentaTab } from "./modules/venta/VentaTab";
 import { CajaTab } from "./modules/caja/CajaTab";
 import { ResumenTab } from "./modules/resumen/ResumenTab";
 import { EmptyState, useLocalStorage, useT } from "./ui/common";
+import { SyncSheet } from "./ui/SyncSheet";
 import type { EventFair } from "./core-data/types";
 
 type Tab = "plan" | "venta" | "caja" | "resumen";
@@ -29,6 +30,7 @@ export default function App(): ReactNode {
   const battery = useBattery();
   const [sun, setSun] = useLocalStorage("booth-mode.sun", false);
   const [editingFair, setEditingFair] = useState(false);
+  const [showSync, setShowSync] = useState(false);
 
   // Screen stays awake while selling — nobody wants to wake a phone mid-queue.
   useWakeLock(tab === "venta");
@@ -71,6 +73,9 @@ export default function App(): ReactNode {
             onClick={() => setSun(!sun)}
           >
             ☀ {t("app.sun")}
+          </button>
+          <button className="chip" onClick={() => setShowSync(true)} aria-label={t("sync.title")}>
+            ⟳
           </button>
           <button className="chip" onClick={() => toggleLang()}>
             {t("app.lang")}
@@ -141,6 +146,8 @@ export default function App(): ReactNode {
           onSave={saveFair}
         />
       ) : null}
+
+      {showSync ? <SyncSheet onClose={() => setShowSync(false)} /> : null}
     </div>
   );
 }

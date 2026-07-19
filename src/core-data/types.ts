@@ -26,6 +26,8 @@ export interface Tier {
   sortOrder: number;
   color: string;
   notes?: string;
+  /** LWW sync clock (ISO8601). Stamped by the Dexie write hooks — see sync/. */
+  updatedAt?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -66,6 +68,8 @@ export interface Product {
   active: boolean;
   notes?: string;
   costingRef?: string;
+  /** LWW sync clock (ISO8601). Stamped by the Dexie write hooks — see sync/. */
+  updatedAt?: string;
 }
 
 export const EMPTY_COST: UnitCost = {
@@ -88,6 +92,8 @@ export interface EventFair {
   location?: string;
   floatStartCents?: Cents;
   status: "planned" | "active" | "closed";
+  /** LWW sync clock (ISO8601). Stamped by the Dexie write hooks — see sync/. */
+  updatedAt?: string;
 }
 
 export interface StockPlanLine {
@@ -109,6 +115,8 @@ export interface StockPlan {
   id: string;
   eventId: string;
   lines: StockPlanLine[];
+  /** LWW sync clock (ISO8601). Stamped by the Dexie write hooks — see sync/. */
+  updatedAt?: string;
 }
 
 // ---------------------------------------------------------------------------

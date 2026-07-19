@@ -257,5 +257,21 @@
       "active": "active",
       "notes": "notes"
     }
+  },
+  "sync": {
+    "title": "Sync",
+    "configHint": "Sync is off until you connect a Firebase project. Create a free one (see docs/firebase-setup.md), then paste its config object here.",
+    "saveConfig": "Save config",
+    "disconnect": "Disconnect this project",
+    "email": "Email",
+    "password": "Password",
+    "signIn": "Sign in",
+    "signUp": "Create account",
+    "google": "Continue with Google",
+    "signOut": "Sign out",
+    "syncNow": "Sync now",
+    "syncing": "Syncing…",
+    "result": "Pulled {{pulled}}, pushed {{pushed}}.",
+    "lastSync": "Last sync: {{when}}"
   }
 }
