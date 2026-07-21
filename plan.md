@@ -2,8 +2,16 @@
 
 > **Craft-fair day-of app**: tiered stock planning, glove-friendly tap-to-sell, MXN cash handling with change calculator, restock alerts, end-of-day P&L per product. **Shares its product/inventory data with Forge Log** — costing flows in, sales flow back.
 >
-> Status: planned · Source: Fable 5 planning session 2026-07-12 · Score 14/20 (rank #8)
+> Status: **built — v1 (P0–P3), 2026-07-14/15** · Source: Fable 5 planning session 2026-07-12 · Score 14/20 (rank #8)
 > Suggested vault path: `domains/products/apps/booth-mode/plan.md`
+>
+> **Estado real (2026-07-18):**
+> - P0–P3 built (2026-07-14/15); 108 unit tests green.
+> - Not a PWA yet — the app does not load without the dev server (gap #1 for fair-day use).
+> - No Playwright tests yet (unit only); the F2 fair-day drill is still pending.
+> - Tiers are implemented as named data, not 1–5 (decision documented in code).
+> - Photo tiles, orientation lock, and low-battery auto-export not implemented yet.
+> - P4 (store builds/license) and P5 (sync/alerts) not started; `runs/` unused.
 
 ---
 

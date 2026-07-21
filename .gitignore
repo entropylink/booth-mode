@@ -11,3 +11,4 @@ ios/
 .vite/
 coverage/
 dev-dist/
+.firebase/
