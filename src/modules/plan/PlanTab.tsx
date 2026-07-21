@@ -54,23 +54,19 @@ export function PlanTab({ fair }: { fair: EventFair }): ReactNode {
     return created;
   }
 
-  // Save a new OR edited product, then reconcile its plan lines: keep an existing
-  // line for a variant that survives (its target/packed stay put), add a line for
-  // a new variant, and drop a line for a variant that was removed.
-  async function saveProduct(saved: Product, target: number): Promise<void> {
+  // Save a new OR edited product, then reconcile its plan lines: an existing
+  // line for a surviving variant keeps its packed/made but takes the (possibly
+  // edited) target from the form, a new variant gets a fresh line, and a
+  // removed variant's line is dropped.
+  async function saveProduct(saved: Product, targets: Record<string, number>): Promise<void> {
     await db.products.put(saved);
     const current = await ensurePlan();
     const existing = current.lines.filter((l) => l.productId === saved.id);
-    const lines = saved.variants.map(
-      (v) =>
-        existing.find((l) => l.variant === v) ?? {
-          productId: saved.id,
-          variant: v,
-          target,
-          made: false,
-          packed: 0,
-        },
-    );
+    const lines = saved.variants.map((v) => {
+      const found = existing.find((l) => l.variant === v);
+      const target = targets[v] ?? found?.target ?? 10;
+      return found ? { ...found, target } : { productId: saved.id, variant: v, target, made: false, packed: 0 };
+    });
     await db.stockPlans.update(current.id, {
       lines: [...current.lines.filter((l) => l.productId !== saved.id), ...lines],
     });
@@ -310,6 +306,11 @@ export function PlanTab({ fair }: { fair: EventFair }): ReactNode {
       {adding || editing ? (
         <AddProductSheet
           product={editing}
+          existingTargets={Object.fromEntries(
+            (plan?.lines ?? [])
+              .filter((l) => l.productId === editing?.id)
+              .map((l) => [l.variant, l.target]),
+          )}
           tierOptions={[...tiers.values()]}
           onClose={() => {
             setAdding(false);
@@ -492,15 +493,18 @@ function ImportReport({
 
 function AddProductSheet({
   product,
+  existingTargets,
   tierOptions,
   onClose,
   onSave,
   onDelete,
 }: {
   product: Product | null;
+  /** Current plan target per variant, when editing — seeds the per-variant editors. */
+  existingTargets: Record<string, number>;
   tierOptions: { id: string; label: string }[];
   onClose: () => void;
-  onSave: (product: Product, target: number) => Promise<void>;
+  onSave: (product: Product, targets: Record<string, number>) => Promise<void>;
   onDelete: (product: Product) => Promise<void>;
 }): ReactNode {
   const t = useT();
@@ -518,9 +522,19 @@ function AddProductSheet({
     (product?.variants ?? []).filter((v) => v !== NO_VARIANT).join(", "),
   );
   const [currentQty, setCurrentQty] = useState(0);
+  // New-product target: one Stepper applied to every variant at creation.
   const [target, setTarget] = useState(10);
+  // Editing an existing product: one target per variant, seeded from the plan
+  // and editable independently — this is the "goal number" editor.
+  const [variantTargets, setVariantTargets] = useState<Record<string, number>>(existingTargets);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const variants = variantsText
+    .split(",")
+    .map((v) => v.trim())
+    .filter((v) => v !== "");
+  const list = variants.length > 0 ? variants : [NO_VARIANT];
 
   async function submit(): Promise<void> {
     if (name.trim() === "") return setError(t("common.required"));
@@ -542,12 +556,6 @@ function AddProductSheet({
       });
     }
     if (finalTierId === "") return setError(t("plan.tierRequired"));
-
-    const variants = variantsText
-      .split(",")
-      .map((v) => v.trim())
-      .filter((v) => v !== "");
-    const list = variants.length > 0 ? variants : [NO_VARIANT];
 
     // Variant names become stockByVariant keys → Firestore field names on sync.
     // Firestore rejects names matching /^__.*__$/, so block them here.
@@ -591,7 +599,11 @@ function AddProductSheet({
           active: true,
         };
 
-    void onSave(saved, target);
+    const targets = product
+      ? Object.fromEntries(list.map((v) => [v, variantTargets[v] ?? existingTargets[v] ?? 10]))
+      : Object.fromEntries(list.map((v) => [v, target]));
+
+    void onSave(saved, targets);
   }
 
   return (
@@ -675,7 +687,29 @@ function AddProductSheet({
             <Stepper value={target} onChange={setTarget} label={t("plan.target")} />
           </div>
         </div>
-      ) : null}
+      ) : (
+        // One target per variant, so a multi-variant product's goals stay
+        // independent instead of collapsing to one shared number.
+        <div className="stack">
+          <label>{t("plan.target")}</label>
+          {list.map((v) => (
+            <div className="field-row" key={v}>
+              {v !== NO_VARIANT ? (
+                <span className="faint" style={{ alignSelf: "center", minWidth: 70 }}>
+                  {v}
+                </span>
+              ) : null}
+              <div className="field">
+                <Stepper
+                  value={variantTargets[v] ?? existingTargets[v] ?? 10}
+                  onChange={(n) => setVariantTargets((prev) => ({ ...prev, [v]: n }))}
+                  label={`${t("plan.target")} ${v}`}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {error ? <p className="error">{error}</p> : null}
 
