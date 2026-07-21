@@ -93,14 +93,26 @@ export async function getFirebase(): Promise<FirebaseBundle> {
   const cfg = getFirebaseConfig();
   if (!cfg) throw new Error("Firebase no está configurado.");
 
-  const [{ initializeApp, getApps }, { getAuth }, { getFirestore }] = await Promise.all([
-    import("firebase/app"),
-    import("firebase/auth"),
-    import("firebase/firestore"),
-  ]);
+  const [{ initializeApp, getApps }, { getAuth }, { getFirestore, initializeFirestore }] =
+    await Promise.all([
+      import("firebase/app"),
+      import("firebase/auth"),
+      import("firebase/firestore"),
+    ]);
 
   const app = getApps()[0] ?? initializeApp(cfg);
-  cached = { app, auth: getAuth(app), db: getFirestore(app) };
+  // Optional record fields (productionMinutes, restockThreshold, …) are `undefined`
+  // when "unknown" — the app's intended state. Firestore rejects `undefined` on
+  // write, so tell it to drop those fields instead of throwing. Absent-on-read is
+  // exactly `undefined` again, so this round-trips cleanly.
+  let db: Firestore;
+  try {
+    db = initializeFirestore(app, { ignoreUndefinedProperties: true });
+  } catch {
+    // Already initialised (app reused within this page session) — reuse the instance.
+    db = getFirestore(app);
+  }
+  cached = { app, auth: getAuth(app), db };
   return cached;
 }
 
