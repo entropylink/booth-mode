@@ -14,6 +14,7 @@ import { VentaTab } from "./modules/venta/VentaTab";
 import { CajaTab } from "./modules/caja/CajaTab";
 import { ResumenTab } from "./modules/resumen/ResumenTab";
 import { EmptyState, useLocalStorage, useT } from "./ui/common";
+import { useSwipeNav } from "./ui/gestures";
 import { SyncSheet } from "./ui/SyncSheet";
 import type { EventFair } from "./core-data/types";
 
@@ -23,6 +24,7 @@ const TABS: Tab[] = ["plan", "venta", "caja", "resumen"];
 export default function App(): ReactNode {
   const t = useT();
   const [tab, setTab] = useState<Tab>("venta");
+  const [navDir, setNavDir] = useState<1 | -1>(1);
   const [activeFairId, setActiveFairId] = useActiveFairId();
   const fairs = useFairs();
   const fair = useFair(activeFairId);
@@ -34,6 +36,20 @@ export default function App(): ReactNode {
 
   // Screen stays awake while selling — nobody wants to wake a phone mid-queue.
   useWakeLock(tab === "venta");
+
+  // Tab navigation, remembering direction so the new tab slides in the way the
+  // finger moved. Used by both the tab bar and the swipe gesture.
+  function go(next: Tab): void {
+    setNavDir(TABS.indexOf(next) >= TABS.indexOf(tab) ? 1 : -1);
+    setTab(next);
+  }
+  const swipe = useSwipeNav(
+    (dir) => {
+      const next = TABS.indexOf(tab) + dir;
+      if (next >= 0 && next < TABS.length) go(TABS[next]);
+    },
+    Boolean(fair) && !editingFair && !showSync,
+  );
 
   useEffect(() => {
     document.documentElement.dataset.sun = sun ? "on" : "off";
@@ -83,7 +99,7 @@ export default function App(): ReactNode {
         </div>
       </header>
 
-      <main className="main">
+      <main className="main" {...swipe}>
         {!fair ? (
           <div className="card">
             <EmptyState title={t("fair.none")} hint={t("fair.noneHint")} />
@@ -101,7 +117,7 @@ export default function App(): ReactNode {
             ) : null}
           </div>
         ) : (
-          <>
+          <div key={tab} className="tab-view" data-dir={navDir === 1 ? "next" : "prev"}>
             {tab === "plan" ? <PlanTab fair={fair} /> : null}
             {tab === "venta" ? <VentaTab fair={fair} /> : null}
             {tab === "caja" ? <CajaTab fair={fair} /> : null}
@@ -123,7 +139,7 @@ export default function App(): ReactNode {
                 </div>
               </div>
             ) : null}
-          </>
+          </div>
         )}
       </main>
 
@@ -132,7 +148,7 @@ export default function App(): ReactNode {
           <button
             key={name}
             aria-current={tab === name ? "page" : undefined}
-            onClick={() => setTab(name)}
+            onClick={() => go(name)}
           >
             {t(`tabs.${name}`)}
           </button>
