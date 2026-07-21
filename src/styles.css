@@ -26,6 +26,10 @@
   --ok: #57c98a;
   --warn: #e0a33f;
 
+  /* Row tints — plain rgba so they render on every Safari, not just 16.2+. */
+  --tint-todo: rgba(224, 163, 63, 0.13);
+  --tint-done: rgba(87, 201, 138, 0.14);
+
   --tier-1: #5eb0e5;
   --tier-2: #57c98a;
   --tier-3: #b89857;
@@ -55,6 +59,10 @@
   --warn: #8a5a00;
   --gold: #7a5310;
   --shadow: 0 4px 16px rgb(0 0 0 / 0.18);
+
+  /* Stronger tints for the bright sunlight palette. */
+  --tint-todo: rgba(138, 90, 0, 0.14);
+  --tint-done: rgba(28, 122, 69, 0.15);
 
   --tier-1: #1d6a99;
   --tier-2: #1c7a45;
@@ -487,10 +495,10 @@ button:focus-visible {
 
 /* A quick scan of the plan: amber = still to make/pack, green = target met. */
 .plan-line.todo {
-  background: color-mix(in srgb, var(--warn) 10%, transparent);
+  background: var(--tint-todo);
 }
 .plan-line.done {
-  background: color-mix(in srgb, var(--ok) 10%, transparent);
+  background: var(--tint-done);
 }
 
 .plan-line .name {
