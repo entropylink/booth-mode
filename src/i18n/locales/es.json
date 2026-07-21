@@ -46,6 +46,8 @@
     "export": "Exportar CSV",
     "printable": "Hoja de papel",
     "addProduct": "Agregar producto",
+    "editProduct": "Editar producto",
+    "deleteConfirm": "Toca de nuevo para eliminar",
     "productName": "Producto",
     "tier": "Tier",
     "variant": "Variante",
