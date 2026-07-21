@@ -280,7 +280,10 @@ export function PlanTab({ fair }: { fair: EventFair }): ReactNode {
             {shown.map((line) => {
               const tier = tierOf(tiers, line.tierId);
               return (
-                <div className="plan-line" key={`${line.productId}:${line.variant}`}>
+                <div
+                  className={`plan-line ${lineTint(line, mode)}`}
+                  key={`${line.productId}:${line.variant}`}
+                >
                   {mode === "packing" ? (
                     <button
                       className="pack-check"
@@ -377,6 +380,17 @@ export function PlanTab({ fair }: { fair: EventFair }): ReactNode {
       <Toast message={toast} />
     </>
   );
+}
+
+/**
+ * Row tint: green when the line is done for the current view, amber when there's
+ * still work left. "Done" means packed to target in packing mode, otherwise
+ * stock covers the target. A line with no target set stays neutral.
+ */
+function lineTint(line: InventoryLine, mode: PlanMode): string {
+  if (line.target <= 0) return "";
+  const done = mode === "packing" ? line.packed >= line.target : line.toMake === 0;
+  return done ? "done" : "todo";
 }
 
 function LineSubtitle({ line, mode }: { line: InventoryLine; mode: PlanMode }): ReactNode {

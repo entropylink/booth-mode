@@ -485,6 +485,14 @@ button:focus-visible {
   border-bottom: 0;
 }
 
+/* A quick scan of the plan: amber = still to make/pack, green = target met. */
+.plan-line.todo {
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+}
+.plan-line.done {
+  background: color-mix(in srgb, var(--ok) 10%, transparent);
+}
+
 .plan-line .name {
   font-weight: 700;
 }
