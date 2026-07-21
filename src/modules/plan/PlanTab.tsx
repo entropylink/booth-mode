@@ -19,6 +19,7 @@ import { downloadText, slugDate } from "../../lib/export";
 import { toMakeQueue } from "../../lib/inventory";
 import { formatInferred, formatIssue } from "../../lib/issues";
 import { useInventory, useProducts, useStockPlan, useTierMap, tierOf } from "../../lib/hooks";
+import { viewLines, SORT_KEYS, type SortKey } from "../../lib/product-view";
 import { formatMXN, formatMXNCompact } from "../../lib/money";
 import {
   EmptyState,
@@ -41,6 +42,9 @@ export function PlanTab({ fair }: { fair: EventFair }): ReactNode {
   const inventory = useInventory(fair.id);
   const tiers = useTierMap();
   const [mode, setMode] = useState<PlanMode>("stock");
+  const [query, setQuery] = useState("");
+  const [filterTier, setFilterTier] = useState("");
+  const [sort, setSort] = useState<SortKey>("name");
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [report, setReport] = useState<ImportResult | null>(null);
@@ -141,6 +145,11 @@ export function PlanTab({ fair }: { fair: EventFair }): ReactNode {
 
   const queue = toMakeQueue(inventory);
   const productById = new Map((products ?? []).map((p) => [p.id, p]));
+  const shown = viewLines(
+    inventory.lines,
+    { query, tierId: filterTier, sort },
+    (id) => tiers.get(id)?.sortOrder ?? 999,
+  );
 
   return (
     <>
@@ -177,6 +186,45 @@ export function PlanTab({ fair }: { fair: EventFair }): ReactNode {
         <p className="faint" style={{ marginBottom: 0 }}>
           {t(`plan.hint.${mode}`)}
         </p>
+        {inventory.lines.length > 0 ? (
+          <div className="row wrap" style={{ gap: 8, marginTop: 10 }}>
+            <input
+              type="text"
+              value={query}
+              placeholder={t("plan.searchPlaceholder")}
+              aria-label={t("plan.searchPlaceholder")}
+              onChange={(e) => setQuery(e.target.value)}
+              style={{ flex: "1 1 100%" }}
+            />
+            <select
+              value={filterTier}
+              aria-label={t("plan.allTiers")}
+              onChange={(e) => setFilterTier(e.target.value)}
+              style={{ flex: "1 1 0", minWidth: 0 }}
+            >
+              <option value="">{t("plan.allTiers")}</option>
+              {[...tiers.values()]
+                .sort((a, b) => a.sortOrder - b.sortOrder)
+                .map((tr) => (
+                  <option key={tr.id} value={tr.id}>
+                    {tr.label}
+                  </option>
+                ))}
+            </select>
+            <select
+              value={sort}
+              aria-label={t("plan.sortBy")}
+              onChange={(e) => setSort(e.target.value as SortKey)}
+              style={{ flex: "1 1 0", minWidth: 0 }}
+            >
+              {SORT_KEYS.map((k) => (
+                <option key={k} value={k}>
+                  {t(`plan.sort.${k}`)}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
         <input
           ref={fileRef}
           type="file"
@@ -224,7 +272,12 @@ export function PlanTab({ fair }: { fair: EventFair }): ReactNode {
           ) : null}
 
           <div className="card">
-            {inventory.lines.map((line) => {
+            {shown.length === 0 ? (
+              <p className="faint" style={{ margin: 0, textAlign: "center" }}>
+                {t("plan.noMatches")}
+              </p>
+            ) : null}
+            {shown.map((line) => {
               const tier = tierOf(tiers, line.tierId);
               return (
                 <div className="plan-line" key={`${line.productId}:${line.variant}`}>

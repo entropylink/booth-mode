@@ -48,6 +48,18 @@
     "addProduct": "Add product",
     "editProduct": "Edit product",
     "deleteConfirm": "Tap again to delete",
+    "searchPlaceholder": "Search products…",
+    "allTiers": "All tiers",
+    "sortBy": "Sort",
+    "noMatches": "No products match.",
+    "sort": {
+      "name": "Name A–Z",
+      "price": "Price (high→low)",
+      "margin": "Margin (high→low)",
+      "stock": "Stock (low→high)",
+      "tomake": "To make (high→low)",
+      "tier": "Tier"
+    },
     "productName": "Product",
     "tier": "Tier",
     "variant": "Variant",
