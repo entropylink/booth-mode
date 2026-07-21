@@ -181,8 +181,42 @@ input[inputmode="numeric"] {
 .main {
   flex: 1 1 auto;
   overflow-y: auto;
+  overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   padding: 14px;
+}
+
+/* A tab slides in the way the finger moved (or the tab bar pointed). */
+.tab-view {
+  animation: tab-in 190ms ease-out;
+}
+.tab-view[data-dir="prev"] {
+  animation-name: tab-in-prev;
+}
+@keyframes tab-in {
+  from {
+    opacity: 0;
+    transform: translateX(22px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes tab-in-prev {
+  from {
+    opacity: 0;
+    transform: translateX(-22px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tab-view {
+    animation: none;
+  }
 }
 
 .tabbar {
