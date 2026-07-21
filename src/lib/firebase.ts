@@ -25,6 +25,9 @@ export interface FirebaseConfig {
 
 const REQUIRED: (keyof FirebaseConfig)[] = ["apiKey", "authDomain", "projectId", "appId"];
 
+/** Every field that identifies a project/app — used to detect a config change. */
+const ALL_CONFIG_FIELDS: (keyof FirebaseConfig)[] = [...REQUIRED, "storageBucket", "messagingSenderId"];
+
 export function getFirebaseConfig(): FirebaseConfig | null {
   try {
     const raw = localStorage.getItem(CONFIG_KEY);
@@ -93,14 +96,28 @@ export async function getFirebase(): Promise<FirebaseBundle> {
   const cfg = getFirebaseConfig();
   if (!cfg) throw new Error("Firebase no está configurado.");
 
-  const [{ initializeApp, getApps }, { getAuth }, { getFirestore, initializeFirestore }] =
+  const [{ initializeApp, getApps, deleteApp }, { getAuth }, { getFirestore, initializeFirestore }] =
     await Promise.all([
       import("firebase/app"),
       import("firebase/auth"),
       import("firebase/firestore"),
     ]);
 
-  const app = getApps()[0] ?? initializeApp(cfg);
+  // Reuse the running app only if it was initialised with THIS config. Firebase
+  // keeps an initialised app alive in its own registry for the life of the page,
+  // and initializeApp ignores a new config once one exists — so after the user
+  // fixes a bad config (e.g. a mistyped API key or authDomain) a plain
+  // getApps()[0] keeps handing back the app built from the OLD config until a
+  // manual reload, the exact reason a corrected value can look like it "didn't
+  // take". Compare EVERY config field (authDomain drives OAuth sign-in, appId
+  // etc.), and tear a stale app down so a corrected config applies immediately.
+  const running = getApps()[0];
+  let app: FirebaseApp | undefined = running;
+  if (running && ALL_CONFIG_FIELDS.some((k) => running.options[k] !== cfg[k])) {
+    await deleteApp(running);
+    app = undefined;
+  }
+  app = app ?? initializeApp(cfg);
   // Optional record fields (productionMinutes, restockThreshold, …) are `undefined`
   // when "unknown" — the app's intended state. Firestore rejects `undefined` on
   // write, so tell it to drop those fields instead of throwing. Absent-on-read is

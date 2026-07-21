@@ -498,6 +498,10 @@ function AddProductSheet({
       .filter((v) => v !== "");
     const list = variants.length > 0 ? variants : [NO_VARIANT];
 
+    // Variant names become stockByVariant keys → Firestore field names on sync.
+    // Firestore rejects names matching /^__.*__$/, so block them here.
+    if (list.some((v) => /^__.*__$/.test(v))) return setError(t("common.invalidVariant"));
+
     void onSave(
       {
         id: newId("prod"),

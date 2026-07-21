@@ -123,6 +123,14 @@ export function importStockPlanCSV(text: string): ImportResult {
 
     const variant = row.variant || NO_VARIANT;
 
+    // A variant name becomes a KEY of stockByVariant, i.e. a Firestore field name
+    // on sync. Firestore rejects field names matching /^__.*__$/, and one such
+    // name silently aborts the entire sync pass. Reject it at import instead.
+    if (/^__.*__$/.test(variant)) {
+      issues.push({ kind: "bad-value", row: row.rowNum, column: "variant", value: variant });
+      continue;
+    }
+
     let product = productsById.get(id);
     if (!product) {
       product = {

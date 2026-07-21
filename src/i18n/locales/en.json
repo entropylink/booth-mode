@@ -227,7 +227,8 @@
     "yes": "Yes",
     "no": "No",
     "required": "Required",
-    "invalidAmount": "Invalid amount"
+    "invalidAmount": "Invalid amount",
+    "invalidVariant": "A variant name cannot start and end with “__”."
   },
   "csv": {
     "emptyFile": "The file is empty.",

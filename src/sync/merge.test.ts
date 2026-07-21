@@ -174,6 +174,53 @@ describe("mergeRecords — a realistic three-way", () => {
   });
 });
 
+describe("mergeRecords — canonical, order-insensitive reconciliation", () => {
+  // Firestore returns a document's fields and every nested map's keys in
+  // lexicographic order, not the client's insertion order. Reconciliation must
+  // see a record and its own reordered round-trip as EQUAL, or every sync pass
+  // re-pushes every product forever (unbounded write churn, never converges).
+  const rec = (o: Record<string, unknown>): Doc => o as unknown as Doc;
+  const t = "2026-07-18T10:00:00Z";
+
+  it("treats a key-reordered round-trip as already-converged (no push, no apply)", () => {
+    const local = rec({
+      id: "p1",
+      updatedAt: t,
+      name: "widget",
+      cost: { materialCents: 10, machineCents: 5, laborCents: 0 },
+    });
+    // Same content, keys sorted as Firestore hands them back — top level and nested.
+    const remoteRoundTrip = rec({
+      cost: { laborCents: 0, machineCents: 5, materialCents: 10 },
+      id: "p1",
+      name: "widget",
+      updatedAt: t,
+    });
+    const r = mergeRecords<Doc>({ ...empty, local: [local], remote: [remoteRoundTrip] });
+    expect(r.applyLocal).toEqual([]);
+    expect(r.pushRemote).toEqual([]);
+  });
+
+  it("still detects a genuine content change under reordered keys", () => {
+    const local = rec({ id: "p1", updatedAt: t, cost: { materialCents: 10 } });
+    const remote = rec({ cost: { materialCents: 99 }, id: "p1", updatedAt: t });
+    const r = mergeRecords<Doc>({ ...empty, local: [local], remote: [remote] });
+    // Equal timestamps but different content → not treated as already-equal.
+    expect(r.applyLocal.length + r.pushRemote.length).toBeGreaterThan(0);
+  });
+
+  it("ties break identically whatever the key order on each side", () => {
+    const a = mergeRecords<Doc>({
+      ...empty,
+      local: [rec({ id: "x", updatedAt: t, a: 1, b: 2 })],
+      remote: [rec({ b: 2, a: 1, id: "x", updatedAt: t })],
+    });
+    // Byte-equal after canonicalization → converged, no churn either direction.
+    expect(a.applyLocal).toEqual([]);
+    expect(a.pushRemote).toEqual([]);
+  });
+});
+
 describe("mergeEvents — append-only union", () => {
   const ev = (id: string, ts: string) => ({ id, ts, kind: "sale" });
 

@@ -1,0 +1,15 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Cada cuenta solo puede leer y escribir bajo su propio uid. Cubre todas las
+    // subcolecciones sincronizadas (products, tiers, fairs, stockPlans, events,
+    // machines, materials, settings, costings, recipes) y sus tombstones __tomb_*.
+    //
+    // Copia versionada de docs/firebase-setup.md §4. Ambas apps (Booth Mode y
+    // Forge Log) comparten el proyecto entropy-suite, así que este ruleset es el
+    // único para las dos — mantenlo idéntico en ambos repos.
+    match /users/{uid}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+  }
+}
