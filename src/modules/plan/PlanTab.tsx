@@ -12,6 +12,7 @@ import {
   emptyTemplateCSV,
   exportStockPlanCSV,
   importStockPlanCSV,
+  mergeImportedPlanLines,
   type ImportResult,
 } from "../../lib/csv";
 import { downloadText, slugDate } from "../../lib/export";
@@ -85,15 +86,9 @@ export function PlanTab({ fair }: { fair: EventFair }): ReactNode {
     await db.products.bulkPut(result.products);
     const current = await ensurePlan();
 
-    // Imported targets win; packed counts already recorded here survive.
-    const merged = [...current.lines];
-    for (const line of result.lines) {
-      const i = merged.findIndex(
-        (l) => l.productId === line.productId && l.variant === line.variant,
-      );
-      if (i >= 0) merged[i] = { ...merged[i], target: line.target, made: line.made };
-      else merged.push(line);
-    }
+    // Additive: a Forge-exported catalog carries goal_qty/made as 0/false, and a
+    // re-import must not wipe fair targets set here. See mergeImportedPlanLines.
+    const merged = mergeImportedPlanLines(current.lines, result.lines);
     await db.stockPlans.update(current.id, { lines: merged });
     setReport(result);
   }

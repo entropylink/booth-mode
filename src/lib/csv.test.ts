@@ -7,12 +7,13 @@ import {
   exportStockPlanCSV,
   fairPriceFromHouse,
   importStockPlanCSV,
+  mergeImportedPlanLines,
   parseCSV,
   tierIdFromLabel,
 } from "./csv";
 import { buildInventory } from "./inventory";
 import { TEMPLATE_HEADER } from "../core-data/template";
-import type { StockPlan } from "../core-data/types";
+import type { StockPlan, StockPlanLine } from "../core-data/types";
 
 const REAL_CSV = readFileSync(
   fileURLToPath(new URL("./__fixtures__/feria-stock-plan.csv", import.meta.url)),
@@ -364,5 +365,39 @@ describe("importer tolerance", () => {
     expect(result.products[0].variants).toEqual(["Roble", "Nogal"]);
     expect(result.products[0].stockByVariant).toEqual({ Roble: 5, Nogal: 3 });
     expect(result.lines).toHaveLength(2);
+  });
+});
+
+describe("mergeImportedPlanLines — additive re-import", () => {
+  const line = (
+    productId: string,
+    variant: string,
+    target: number,
+    made = false,
+    packed = 0,
+  ): StockPlanLine => ({ productId, variant, target, made, packed });
+
+  it("never zeroes an existing target when the import carries 0 (Forge catalog export)", () => {
+    const existing = [line("p1", "—", 30, true, 12)];
+    // A Forge-exported catalog: goal_qty/made/packed all default to 0/false.
+    const imported = [line("p1", "—", 0, false, 0)];
+    const merged = mergeImportedPlanLines(existing, imported);
+    expect(merged).toEqual([line("p1", "—", 30, true, 12)]);
+  });
+
+  it("still applies a real (positive) imported target to an existing line", () => {
+    const merged = mergeImportedPlanLines([line("p1", "—", 30)], [line("p1", "—", 50)]);
+    expect(merged[0].target).toBe(50);
+  });
+
+  it("adds brand-new lines from the import as-is", () => {
+    const merged = mergeImportedPlanLines([line("p1", "—", 30)], [line("p2", "—", 0)]);
+    expect(merged).toHaveLength(2);
+    expect(merged.find((l) => l.productId === "p2")?.target).toBe(0);
+  });
+
+  it("never clears a made flag already set here", () => {
+    const merged = mergeImportedPlanLines([line("p1", "—", 30, true)], [line("p1", "—", 0, false)]);
+    expect(merged[0].made).toBe(true);
   });
 });

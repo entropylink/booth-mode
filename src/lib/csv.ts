@@ -63,6 +63,37 @@ export function fairPriceFromHouse(housePriceCents: Cents): Cents {
     : Math.round(raw);
 }
 
+/**
+ * Merge imported plan lines into the current plan, ADDITIVELY. A catalog
+ * exported from Forge Log carries goal_qty/made as 0/false (Forge has no fair),
+ * so re-importing it must never wipe fair targets set here in Booth Mode. An
+ * existing line is therefore only updated by a REAL imported value: a positive
+ * target replaces the target, a true `made` sets made — 0/false mean "no
+ * opinion, keep what's here". New lines are appended as-is. `packed` always
+ * survives (it is never part of an imported line).
+ */
+export function mergeImportedPlanLines(
+  existing: readonly StockPlanLine[],
+  imported: readonly StockPlanLine[],
+): StockPlanLine[] {
+  const merged = [...existing];
+  for (const line of imported) {
+    const i = merged.findIndex(
+      (l) => l.productId === line.productId && l.variant === line.variant,
+    );
+    if (i >= 0) {
+      merged[i] = {
+        ...merged[i],
+        target: line.target > 0 ? line.target : merged[i].target,
+        made: line.made || merged[i].made,
+      };
+    } else {
+      merged.push(line);
+    }
+  }
+  return merged;
+}
+
 export function importStockPlanCSV(text: string): ImportResult {
   const parsed = parseTemplateCSV(text);
   const issues = [...parsed.issues];
