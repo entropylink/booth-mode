@@ -251,7 +251,7 @@ export function ResumenTab({ fair }: { fair: EventFair }): ReactNode {
         />
       ) : null}
 
-      <Toast message={toast} />
+      <Toast toast={toast} />
     </>
   );
 }

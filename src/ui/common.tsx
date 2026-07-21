@@ -99,6 +99,12 @@ export function MoneyInput({
   );
 }
 
+// Only the TOP-most open sheet reacts to Escape/Tab, so a sheet opened inside
+// another doesn't collapse the whole stack at once.
+const sheetStack: symbol[] = [];
+const FOCUSABLE =
+  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 export function Sheet({
   title,
   onClose,
@@ -108,13 +114,77 @@ export function Sheet({
   onClose: () => void;
   children: ReactNode;
 }): ReactNode {
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  // Read the latest onClose without depending on its identity: nearly every call
+  // site passes an inline arrow, so a new function is created on each parent
+  // re-render (e.g. a background-sync liveQuery tick, or typing in a field that
+  // re-renders the parent). If the effect below keyed on onClose, every such
+  // re-render would tear it down and re-run it — stealing focus back to the first
+  // field mid-typing and re-pushing this sheet to the top of the stack, which
+  // mis-routes Escape/Tab when sheets are nested.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === "Escape") onClose();
+    const id = Symbol();
+    sheetStack.push(id);
+    const restore = document.activeElement as HTMLElement | null;
+
+    const focusables = (): HTMLElement[] => {
+      const root = dialogRef.current;
+      if (!root) return [];
+      return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+        (el) => el.offsetParent !== null,
+      );
     };
+
+    // Move focus into the dialog on open — but only if focus isn't already inside
+    // it. An autoFocus field may have claimed it (e.g. the Name input), and we
+    // must not yank the caret off it to the DOM-first field.
+    if (!dialogRef.current?.contains(document.activeElement)) {
+      (focusables()[0] ?? dialogRef.current)?.focus();
+    }
+
+    const onKey = (e: KeyboardEvent): void => {
+      if (sheetStack[sheetStack.length - 1] !== id) return; // not the top sheet
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onCloseRef.current();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      // Trap Tab within the dialog.
+      const items = focusables();
+      if (items.length === 0) {
+        e.preventDefault();
+        dialogRef.current?.focus();
+        return;
+      }
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey && (active === first || active === dialogRef.current)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      const i = sheetStack.lastIndexOf(id);
+      if (i >= 0) sheetStack.splice(i, 1);
+      restore?.focus?.(); // return focus to whatever opened the sheet
+    };
+    // Mount-only: onClose is read through onCloseRef so a fresh inline-arrow
+    // identity on re-render doesn't re-run this effect (which would steal focus
+    // and reorder the sheet stack). See onCloseRef note above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div
@@ -124,7 +194,14 @@ export function Sheet({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="sheet" role="dialog" aria-modal="true" aria-label={title}>
+      <div
+        className="sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        ref={dialogRef}
+        tabIndex={-1}
+      >
         <h2>{title}</h2>
         {children}
       </div>
@@ -189,30 +266,43 @@ export function HoldButton({
   );
 }
 
-export function Toast({ message }: { message: string | null }): ReactNode {
-  if (!message) return null;
+export interface ToastMsg {
+  text: string;
+  tone: "ok" | "error";
+}
+
+export function Toast({ toast }: { toast: ToastMsg | null }): ReactNode {
+  if (!toast) return null;
+  const isError = toast.tone === "error";
   return (
-    <div className="toast" role="status" aria-live="polite">
-      {message}
+    <div
+      className={`toast ${isError ? "error" : ""}`}
+      role={isError ? "alert" : "status"}
+      aria-live={isError ? "assertive" : "polite"}
+    >
+      {toast.text}
     </div>
   );
 }
 
-export function useToast(ms = 1600): [string | null, (m: string) => void] {
-  const [message, setMessage] = useState<string | null>(null);
+/** Transient message. Pass tone "error" for failures (red, and it lingers). */
+export function useToast(
+  ms = 1600,
+): [ToastMsg | null, (text: string, tone?: "ok" | "error") => void] {
+  const [toast, setToast] = useState<ToastMsg | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const show = useCallback(
-    (m: string) => {
-      setMessage(m);
+    (text: string, tone: "ok" | "error" = "ok") => {
+      setToast({ text, tone });
       if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(() => setMessage(null), ms);
+      timer.current = setTimeout(() => setToast(null), tone === "error" ? 4000 : ms);
     },
     [ms],
   );
 
   useEffect(() => () => (timer.current ? clearTimeout(timer.current) : undefined), []);
-  return [message, show];
+  return [toast, show];
 }
 
 export function EmptyState({ title, hint }: { title: string; hint?: string }): ReactNode {

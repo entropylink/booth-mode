@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
@@ -52,5 +52,10 @@ export default defineConfig({
   preview: {
     port: Number(process.env.PORT) || 4173,
     strictPort: false,
+  },
+  // Unit tests only. The Playwright e2e specs live in ./e2e and are run by
+  // `npm run e2e`, not vitest.
+  test: {
+    include: ["src/**/*.test.{ts,tsx}"],
   },
 });

@@ -114,22 +114,28 @@ export function PlanTab({ fair }: { fair: EventFair }): ReactNode {
   }
 
   async function onImport(file: File): Promise<void> {
-    const result = importStockPlanCSV(await file.text());
+    // Wrapped: a parse error or a Dexie write that throws (e.g. QuotaExceeded)
+    // must surface, not silently fail while the report/toast implies success.
+    try {
+      const result = importStockPlanCSV(await file.text());
 
-    if (result.products.length === 0) {
+      if (result.products.length === 0) {
+        setReport(result);
+        return;
+      }
+
+      await db.tiers.bulkPut(result.tiers);
+      await db.products.bulkPut(result.products);
+      const current = await ensurePlan();
+
+      // Additive: a Forge-exported catalog carries goal_qty/made as 0/false, and a
+      // re-import must not wipe fair targets set here. See mergeImportedPlanLines.
+      const merged = mergeImportedPlanLines(current.lines, result.lines);
+      await db.stockPlans.update(current.id, { lines: merged });
       setReport(result);
-      return;
+    } catch (e) {
+      showToast(t("common.importError", { error: e instanceof Error ? e.message : String(e) }), "error");
     }
-
-    await db.tiers.bulkPut(result.tiers);
-    await db.products.bulkPut(result.products);
-    const current = await ensurePlan();
-
-    // Additive: a Forge-exported catalog carries goal_qty/made as 0/false, and a
-    // re-import must not wipe fair targets set here. See mergeImportedPlanLines.
-    const merged = mergeImportedPlanLines(current.lines, result.lines);
-    await db.stockPlans.update(current.id, { lines: merged });
-    setReport(result);
   }
 
   function onExport(): void {
@@ -377,7 +383,7 @@ export function PlanTab({ fair }: { fair: EventFair }): ReactNode {
         />
       ) : null}
 
-      <Toast message={toast} />
+      <Toast toast={toast} />
     </>
   );
 }
@@ -588,6 +594,15 @@ function AddProductSheet({
   const [variantsText, setVariantsText] = useState(
     (product?.variants ?? []).filter((v) => v !== NO_VARIANT).join(", "),
   );
+  // Optional per-product details. null/"" means "unknown" — left undefined so it
+  // stays honest (and so it never fabricates a production time it doesn't have).
+  const [productionMinutes, setProductionMinutes] = useState<number | null>(
+    product?.productionMinutes ?? null,
+  );
+  const [restockThreshold, setRestockThreshold] = useState<number | null>(
+    product?.restockThreshold ?? null,
+  );
+  const [machine, setMachine] = useState(product?.machine ?? "");
   const [currentQty, setCurrentQty] = useState(0);
   // New-product target: one Stepper applied to every variant at creation.
   const [target, setTarget] = useState(10);
@@ -634,8 +649,17 @@ function AddProductSheet({
       list.map((v) => [v, product?.stockByVariant[v] ?? currentQty]),
     );
 
+    // Optional details the form now owns. Empty stays undefined ("unknown"),
+    // never a fabricated 0 — an unset productionMinutes is what keeps the plan's
+    // bench-hours honest.
+    const details = {
+      machine: machine.trim() || undefined,
+      productionMinutes: productionMinutes ?? undefined,
+      restockThreshold: restockThreshold ?? undefined,
+    };
+
     // When editing, preserve everything the form doesn't touch — the cost
-    // breakdown owned by Forge Log, costingRef, photoRef, machine, active, etc.
+    // breakdown owned by Forge Log, costingRef, photoRef, active, etc.
     const saved: Product = product
       ? {
           ...product,
@@ -646,6 +670,7 @@ function AddProductSheet({
           housePriceCents: housePriceCents ?? sellingPriceCents,
           sellingPriceCents,
           stockByVariant,
+          ...details,
         }
       : {
           id: newId("prod"),
@@ -664,6 +689,7 @@ function AddProductSheet({
           sellingPriceCents,
           stockByVariant,
           active: true,
+          ...details,
         };
 
     const targets = product
@@ -738,9 +764,51 @@ function AddProductSheet({
           type="text"
           value={variantsText}
           onChange={(e) => setVariantsText(e.target.value)}
-          placeholder="Roble, Nogal"
+          placeholder={t("plan.variantsExample")}
         />
         <span className="faint">{t("plan.variantsHint")}</span>
+      </div>
+
+      <div className="field-row">
+        <div className="field">
+          <label htmlFor="p-minutes">{t("plan.productionMinutes")}</label>
+          <input
+            id="p-minutes"
+            type="text"
+            inputMode="numeric"
+            value={productionMinutes ?? ""}
+            placeholder={t("plan.optional")}
+            onChange={(e) => {
+              const v = e.target.value.replace(/[^0-9]/g, "");
+              setProductionMinutes(v === "" ? null : Number(v));
+            }}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="p-restock">{t("plan.restockThreshold")}</label>
+          <input
+            id="p-restock"
+            type="text"
+            inputMode="numeric"
+            value={restockThreshold ?? ""}
+            placeholder={t("plan.optional")}
+            onChange={(e) => {
+              const v = e.target.value.replace(/[^0-9]/g, "");
+              setRestockThreshold(v === "" ? null : Number(v));
+            }}
+          />
+        </div>
+      </div>
+
+      <div className="field">
+        <label htmlFor="p-machine">{t("plan.machine")}</label>
+        <input
+          id="p-machine"
+          type="text"
+          value={machine}
+          placeholder={t("plan.optional")}
+          onChange={(e) => setMachine(e.target.value)}
+        />
       </div>
 
       {!product ? (

@@ -279,7 +279,7 @@ export function VentaTab({ fair }: { fair: EventFair }): ReactNode {
         />
       ) : null}
 
-      <Toast message={toast} />
+      <Toast toast={toast} />
     </>
   );
 }

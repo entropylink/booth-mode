@@ -65,6 +65,11 @@
     "variant": "Variante",
     "variants": "Variantes",
     "variantsHint": "Separadas por coma. Déjalo vacío si no tiene.",
+    "variantsExample": "Roble, Nogal",
+    "productionMinutes": "Minutos por pieza",
+    "restockThreshold": "Resurtir en",
+    "machine": "Máquina",
+    "optional": "Opcional",
     "price": "Precio",
     "target": "Objetivo",
     "packed": "Empacado",
@@ -242,7 +247,8 @@
     "no": "No",
     "required": "Requerido",
     "invalidAmount": "Monto inválido",
-    "invalidVariant": "Un nombre de variante no puede empezar y terminar con «__»."
+    "invalidVariant": "Un nombre de variante no puede empezar y terminar con «__».",
+    "importError": "Falló la importación: {{error}}"
   },
   "csv": {
     "emptyFile": "El archivo está vacío.",
