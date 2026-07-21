@@ -80,7 +80,7 @@ export function CajaTab({ fair }: { fair: EventFair }): ReactNode {
         }}
       />
 
-      <Toast message={toast} />
+      <Toast toast={toast} />
     </>
   );
 }

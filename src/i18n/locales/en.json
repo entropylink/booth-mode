@@ -65,6 +65,11 @@
     "variant": "Variant",
     "variants": "Variants",
     "variantsHint": "Comma separated. Leave empty if none.",
+    "variantsExample": "Oak, Walnut",
+    "productionMinutes": "Minutes to make",
+    "restockThreshold": "Restock at",
+    "machine": "Machine",
+    "optional": "Optional",
     "price": "Price",
     "target": "Target",
     "packed": "Packed",
@@ -242,7 +247,8 @@
     "no": "No",
     "required": "Required",
     "invalidAmount": "Invalid amount",
-    "invalidVariant": "A variant name cannot start and end with “__”."
+    "invalidVariant": "A variant name cannot start and end with “__”.",
+    "importError": "Import failed: {{error}}"
   },
   "csv": {
     "emptyFile": "The file is empty.",

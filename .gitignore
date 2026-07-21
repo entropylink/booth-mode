@@ -12,3 +12,5 @@ ios/
 coverage/
 dev-dist/
 .firebase/
+test-results/
+playwright-report/
