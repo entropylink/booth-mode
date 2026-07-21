@@ -81,16 +81,49 @@ function latestTombstones(
 }
 
 /**
+ * Order-insensitive canonical JSON: object keys sorted recursively, arrays kept
+ * in order, and undefined-valued keys dropped exactly as JSON.stringify does.
+ *
+ * Firestore returns a document's fields — and every nested map's keys — in
+ * lexicographic order, NOT the client's insertion order. So a record and its own
+ * Firestore round-trip are byte-different under raw JSON.stringify purely because
+ * of key order (a Product's `cost` map goes up as {materialCents,…} and comes
+ * back as {consumableCents,…}). Reconciling by this canonical form makes the
+ * round-trip compare EQUAL, so a converged record is not re-pushed on every
+ * single sync pass forever.
+ */
+function canon(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return "null";
+  const t = typeof value;
+  if (t === "function" || t === "symbol") return undefined; // dropped, as JSON does
+  if (t !== "object") return JSON.stringify(value); // string | number (NaN/∞→null) | boolean
+  if (Array.isArray(value)) return `[${value.map((v) => canon(v) ?? "null").join(",")}]`;
+  const obj = value as Record<string, unknown>;
+  const parts: string[] = [];
+  for (const k of Object.keys(obj).sort()) {
+    const sv = canon(obj[k]);
+    if (sv !== undefined) parts.push(`${JSON.stringify(k)}:${sv}`);
+  }
+  return `{${parts.join(",")}}`;
+}
+
+/** Canonical form of a whole record (always an object → always a string). */
+function stableStringify(value: unknown): string {
+  return canon(value) ?? "null";
+}
+
+/**
  * Which of two records wins. Newer `updatedAt` wins. On an exact tie (same
- * millisecond on two devices), the lexicographically greater JSON wins — an
- * arbitrary but *deterministic* rule, so both devices independently pick the
- * same winner and still converge. Ties are vanishingly rare and, being a tie,
- * the two values are equally valid.
+ * millisecond on two devices), the greater canonical JSON wins — an arbitrary
+ * but *deterministic* rule, so both devices independently pick the same winner
+ * and still converge. Ties are vanishingly rare and, being a tie, the two values
+ * are equally valid.
  */
 function pickNewer<T extends Syncable>(a: T, b: T): T {
   if (a.updatedAt > b.updatedAt) return a;
   if (b.updatedAt > a.updatedAt) return b;
-  return JSON.stringify(a) >= JSON.stringify(b) ? a : b;
+  return stableStringify(a) >= stableStringify(b) ? a : b;
 }
 
 export function mergeRecords<T extends Syncable>(input: MergeInput<T>): MergeResult<T> {
@@ -143,9 +176,9 @@ export function mergeRecords<T extends Syncable>(input: MergeInput<T>): MergeRes
     // actually differs from what that side already holds. Comparing references
     // would push identical records forever (getRecords hands back fresh copies),
     // and sync would never converge.
-    const winnerJson = JSON.stringify(winner);
-    if (winnerJson !== (l ? JSON.stringify(l) : null)) result.applyLocal.push(winner);
-    if (winnerJson !== (r ? JSON.stringify(r) : null)) result.pushRemote.push(winner);
+    const winnerJson = stableStringify(winner);
+    if (winnerJson !== (l ? stableStringify(l) : null)) result.applyLocal.push(winner);
+    if (winnerJson !== (r ? stableStringify(r) : null)) result.pushRemote.push(winner);
   }
 
   return result;

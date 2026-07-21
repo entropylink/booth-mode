@@ -6,12 +6,13 @@
 // shown as unknown rather than guessed when a product has no cost.
 
 import { useRef, useState, type ReactNode } from "react";
-import { db, newId } from "../../lib/dexie";
+import { db, newId, softDelete } from "../../lib/dexie";
 import {
   NO_VARIANT,
   emptyTemplateCSV,
   exportStockPlanCSV,
   importStockPlanCSV,
+  mergeImportedPlanLines,
   type ImportResult,
 } from "../../lib/csv";
 import { downloadText, slugDate } from "../../lib/export";
@@ -41,6 +42,7 @@ export function PlanTab({ fair }: { fair: EventFair }): ReactNode {
   const tiers = useTierMap();
   const [mode, setMode] = useState<PlanMode>("stock");
   const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<Product | null>(null);
   const [report, setReport] = useState<ImportResult | null>(null);
   const [toast, showToast] = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -50,6 +52,44 @@ export function PlanTab({ fair }: { fair: EventFair }): ReactNode {
     const created: StockPlan = { id: newId("plan"), eventId: fair.id, lines: [] };
     await db.stockPlans.add(created);
     return created;
+  }
+
+  // Save a new OR edited product, then reconcile its plan lines: keep an existing
+  // line for a variant that survives (its target/packed stay put), add a line for
+  // a new variant, and drop a line for a variant that was removed.
+  async function saveProduct(saved: Product, target: number): Promise<void> {
+    await db.products.put(saved);
+    const current = await ensurePlan();
+    const existing = current.lines.filter((l) => l.productId === saved.id);
+    const lines = saved.variants.map(
+      (v) =>
+        existing.find((l) => l.variant === v) ?? {
+          productId: saved.id,
+          variant: v,
+          target,
+          made: false,
+          packed: 0,
+        },
+    );
+    await db.stockPlans.update(current.id, {
+      lines: [...current.lines.filter((l) => l.productId !== saved.id), ...lines],
+    });
+    setAdding(false);
+    setEditing(null);
+    showToast(saved.name);
+  }
+
+  async function deleteProduct(product: Product): Promise<void> {
+    // softDelete drops a tombstone so the delete propagates through sync instead
+    // of the product resurrecting from another device. Its plan lines go too.
+    await softDelete("products", product.id);
+    if (plan) {
+      await db.stockPlans.update(plan.id, {
+        lines: plan.lines.filter((l) => l.productId !== product.id),
+      });
+    }
+    setEditing(null);
+    showToast(product.name);
   }
 
   async function updateLine(
@@ -85,15 +125,9 @@ export function PlanTab({ fair }: { fair: EventFair }): ReactNode {
     await db.products.bulkPut(result.products);
     const current = await ensurePlan();
 
-    // Imported targets win; packed counts already recorded here survive.
-    const merged = [...current.lines];
-    for (const line of result.lines) {
-      const i = merged.findIndex(
-        (l) => l.productId === line.productId && l.variant === line.variant,
-      );
-      if (i >= 0) merged[i] = { ...merged[i], target: line.target, made: line.made };
-      else merged.push(line);
-    }
+    // Additive: a Forge-exported catalog carries goal_qty/made as 0/false, and a
+    // re-import must not wipe fair targets set here. See mergeImportedPlanLines.
+    const merged = mergeImportedPlanLines(current.lines, result.lines);
     await db.stockPlans.update(current.id, { lines: merged });
     setReport(result);
   }
@@ -110,6 +144,7 @@ export function PlanTab({ fair }: { fair: EventFair }): ReactNode {
   if (!inventory) return <p className="muted">{t("app.loading")}</p>;
 
   const queue = toMakeQueue(inventory);
+  const productById = new Map((products ?? []).map((p) => [p.id, p]));
 
   return (
     <>
@@ -214,7 +249,24 @@ export function PlanTab({ fair }: { fair: EventFair }): ReactNode {
                     <TierBadge tier={tier} />
                   )}
 
-                  <div className="grow">
+                  <button
+                    type="button"
+                    className="grow plan-line-edit"
+                    aria-label={t("plan.editProduct")}
+                    onClick={() => {
+                      const p = productById.get(line.productId);
+                      if (p) setEditing(p);
+                    }}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      padding: 0,
+                      font: "inherit",
+                      color: "inherit",
+                      textAlign: "left",
+                      cursor: "pointer",
+                    }}
+                  >
                     <div className="name">
                       {line.sku ? <span className="faint">{line.sku} · </span> : null}
                       {line.productName}
@@ -229,7 +281,7 @@ export function PlanTab({ fair }: { fair: EventFair }): ReactNode {
                       ) : null}
                     </div>
                     <LineSubtitle line={line} mode={mode} />
-                  </div>
+                  </button>
 
                   <Stepper
                     label={`${line.productName} ${t(`plan.stepper.${mode}`)}`}
@@ -255,28 +307,16 @@ export function PlanTab({ fair }: { fair: EventFair }): ReactNode {
 
       {report ? <ImportReport report={report} onClose={() => setReport(null)} /> : null}
 
-      {adding ? (
+      {adding || editing ? (
         <AddProductSheet
+          product={editing}
           tierOptions={[...tiers.values()]}
-          onClose={() => setAdding(false)}
-          onSave={async (product, target) => {
-            await db.products.put(product);
-            const current = await ensurePlan();
-            await db.stockPlans.update(current.id, {
-              lines: [
-                ...current.lines.filter((l) => l.productId !== product.id),
-                ...product.variants.map((v) => ({
-                  productId: product.id,
-                  variant: v,
-                  target,
-                  made: false,
-                  packed: 0,
-                })),
-              ],
-            });
+          onClose={() => {
             setAdding(false);
-            showToast(product.name);
+            setEditing(null);
           }}
+          onSave={saveProduct}
+          onDelete={deleteProduct}
         />
       ) : null}
 
@@ -451,24 +491,35 @@ function ImportReport({
 }
 
 function AddProductSheet({
+  product,
   tierOptions,
   onClose,
   onSave,
+  onDelete,
 }: {
+  product: Product | null;
   tierOptions: { id: string; label: string }[];
   onClose: () => void;
   onSave: (product: Product, target: number) => Promise<void>;
+  onDelete: (product: Product) => Promise<void>;
 }): ReactNode {
   const t = useT();
-  const [sku, setSku] = useState("");
-  const [name, setName] = useState("");
-  const [tierId, setTierId] = useState(tierOptions[0]?.id ?? "");
+  const [sku, setSku] = useState(product?.sku ?? "");
+  const [name, setName] = useState(product?.name ?? "");
+  const [tierId, setTierId] = useState(product?.tierId ?? tierOptions[0]?.id ?? "");
   const [newTierLabel, setNewTierLabel] = useState("");
-  const [housePriceCents, setHousePriceCents] = useState<number | null>(null);
-  const [sellingPriceCents, setSellingPriceCents] = useState<number | null>(null);
-  const [variantsText, setVariantsText] = useState("");
+  const [housePriceCents, setHousePriceCents] = useState<number | null>(
+    product?.housePriceCents ?? null,
+  );
+  const [sellingPriceCents, setSellingPriceCents] = useState<number | null>(
+    product?.sellingPriceCents ?? null,
+  );
+  const [variantsText, setVariantsText] = useState(
+    (product?.variants ?? []).filter((v) => v !== NO_VARIANT).join(", "),
+  );
   const [currentQty, setCurrentQty] = useState(0);
   const [target, setTarget] = useState(10);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function submit(): Promise<void> {
@@ -498,31 +549,53 @@ function AddProductSheet({
       .filter((v) => v !== "");
     const list = variants.length > 0 ? variants : [NO_VARIANT];
 
-    void onSave(
-      {
-        id: newId("prod"),
-        sku: sku.trim(),
-        name: name.trim(),
-        variants: list,
-        tierId: finalTierId,
-        cost: {
-          materialCents: 0,
-          machineCents: 0,
-          laborCents: 0,
-          consumableCents: 0,
-          packagingCents: 0,
-        },
-        housePriceCents: housePriceCents ?? sellingPriceCents,
-        sellingPriceCents,
-        stockByVariant: Object.fromEntries(list.map((v) => [v, currentQty])),
-        active: true,
-      },
-      target,
+    // Variant names become stockByVariant keys → Firestore field names on sync.
+    // Firestore rejects names matching /^__.*__$/, so block them here.
+    if (list.some((v) => /^__.*__$/.test(v))) return setError(t("common.invalidVariant"));
+
+    // Keep per-variant stock: a surviving variant keeps its count, a new one
+    // starts at the form's currentQty (0 when editing — set it per-line later).
+    const stockByVariant = Object.fromEntries(
+      list.map((v) => [v, product?.stockByVariant[v] ?? currentQty]),
     );
+
+    // When editing, preserve everything the form doesn't touch — the cost
+    // breakdown owned by Forge Log, costingRef, photoRef, machine, active, etc.
+    const saved: Product = product
+      ? {
+          ...product,
+          sku: sku.trim(),
+          name: name.trim(),
+          variants: list,
+          tierId: finalTierId,
+          housePriceCents: housePriceCents ?? sellingPriceCents,
+          sellingPriceCents,
+          stockByVariant,
+        }
+      : {
+          id: newId("prod"),
+          sku: sku.trim(),
+          name: name.trim(),
+          variants: list,
+          tierId: finalTierId,
+          cost: {
+            materialCents: 0,
+            machineCents: 0,
+            laborCents: 0,
+            consumableCents: 0,
+            packagingCents: 0,
+          },
+          housePriceCents: housePriceCents ?? sellingPriceCents,
+          sellingPriceCents,
+          stockByVariant,
+          active: true,
+        };
+
+    void onSave(saved, target);
   }
 
   return (
-    <Sheet title={t("plan.addProduct")} onClose={onClose}>
+    <Sheet title={product ? t("plan.editProduct") : t("plan.addProduct")} onClose={onClose}>
       <div className="field-row">
         <div className="field" style={{ maxWidth: 110 }}>
           <label htmlFor="p-sku">{t("plan.sku")}</label>
@@ -591,16 +664,18 @@ function AddProductSheet({
         <span className="faint">{t("plan.variantsHint")}</span>
       </div>
 
-      <div className="field-row">
-        <div className="field">
-          <label>{t("plan.currentQty")}</label>
-          <Stepper value={currentQty} onChange={setCurrentQty} label={t("plan.currentQty")} />
+      {!product ? (
+        <div className="field-row">
+          <div className="field">
+            <label>{t("plan.currentQty")}</label>
+            <Stepper value={currentQty} onChange={setCurrentQty} label={t("plan.currentQty")} />
+          </div>
+          <div className="field">
+            <label>{t("plan.target")}</label>
+            <Stepper value={target} onChange={setTarget} label={t("plan.target")} />
+          </div>
         </div>
-        <div className="field">
-          <label>{t("plan.target")}</label>
-          <Stepper value={target} onChange={setTarget} label={t("plan.target")} />
-        </div>
-      </div>
+      ) : null}
 
       {error ? <p className="error">{error}</p> : null}
 
@@ -608,6 +683,17 @@ function AddProductSheet({
         <button className="btn grow ghost" onClick={onClose}>
           {t("common.cancel")}
         </button>
+        {product ? (
+          <button
+            className="btn grow danger"
+            onClick={() => {
+              if (!confirmDelete) return setConfirmDelete(true);
+              void onDelete(product);
+            }}
+          >
+            {confirmDelete ? t("plan.deleteConfirm") : t("common.delete")}
+          </button>
+        ) : null}
         <button className="btn grow primary" onClick={() => void submit()}>
           {t("common.save")}
         </button>
