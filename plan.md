@@ -83,8 +83,7 @@ Tabs: **Plan · Venta · Caja · Resumen**. Venta mode: kiosk-like, sunlight-leg
 
 ## 9. Pricing
 
-- **Included with Forge Log sub** (headline suite value; drives Forge Log conversion).
-- **Standalone Booth Mode Offline: one-time $19 USD / $349 MXN** — full v1 features, no sync/alerts (those require the Forge Log account). Clean upsell path.
+Pricing and packaging decisions are tracked outside this repo.
 
 ## 10. Build phases
 
@@ -114,7 +113,7 @@ Change-calculator: exhaustive unit fixtures (every denomination path). Full fair
 
 ## 13. Success metrics
 
-Next real Entropy fair runs fully in-app: zero paper, cash delta ≤ $20 MXN, restock list actually used next morning; standalone edition sells 30 copies in 2 fairs seasons; Booth→Forge Log sub conversion measurable ≥15%.
+Next real Entropy fair runs fully in-app: zero paper, cash delta ≤ $20 MXN, restock list actually used next morning.
 
 ## 14. Open questions
 

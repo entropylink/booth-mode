@@ -116,5 +116,5 @@ that silently skips uncosted products is a lie in your own favour.
   not yet through a browser.
 - Tier editing lives in Forge Log (not built). Booth Mode creates tiers on import
   and when adding a product, but has no tier manager.
-- `src/lib/__fixtures__/feria-stock-plan.csv` is the vendor's real catalog with
-  real prices — it is a test fixture and this repo is private.
+- `src/lib/__fixtures__/feria-stock-plan.csv` is a sample catalog with
+  representative pricing, used as a test fixture.
